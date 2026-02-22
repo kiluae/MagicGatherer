@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environments
+.env
+.venv
+venv/
+ENV/
+
+# Build artifacts
+build/
+dist/
+*.spec
+*.egg-info/
+
+# App-specific
+.cache/
+*_decklist.txt
+*.json
+*.xml
+
+# IDEs
+.idea/
+.vscode/

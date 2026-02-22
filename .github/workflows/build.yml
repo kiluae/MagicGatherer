@@ -1,0 +1,58 @@
+name: Build and Release MagicGatherer
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: MagicGatherer
+            asset_name: MagicGatherer-Linux
+          - os: windows-latest
+            artifact_name: MagicGatherer.exe
+            asset_name: MagicGatherer-Windows.exe
+          - os: macos-latest
+            artifact_name: MagicGatherer
+            asset_name: MagicGatherer-macOS
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller --onefile --windowed --name MagicGatherer src/main.py
+
+      - name: Rename Artifact (macOS/Linux)
+        if: matrix.os != 'windows-latest'
+        run: mv dist/MagicGatherer dist/${{ matrix.asset_name }}
+
+      - name: Rename Artifact (Windows)
+        if: matrix.os == 'windows-latest'
+        run: ren dist\MagicGatherer.exe ${{ matrix.asset_name }}
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/${{ matrix.asset_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
