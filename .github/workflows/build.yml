@@ -1,58 +1,90 @@
-name: Build and Release MagicGatherer
-
+name: Build and Release
 on:
   push:
     tags:
       - 'v*'
 
+permissions:
+  contents: write # CRITICAL FIX: Grants the token write access to upload Release files
+
 jobs:
-  build:
-    name: Build on ${{ matrix.os }}
+  build-standard:
+    name: Build for ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            artifact_name: MagicGatherer
-            asset_name: MagicGatherer-Linux
-          - os: windows-latest
-            artifact_name: MagicGatherer.exe
-            asset_name: MagicGatherer-Windows.exe
-          - os: macos-latest
-            artifact_name: MagicGatherer
-            asset_name: MagicGatherer-macOS
+          - name: Windows
+            os: windows-latest
+            artifact: MagicGatherer-Windows.exe
+          - name: macOS
+            os: macos-latest
+            artifact: MagicGatherer-macOS.app.zip
+          - name: Ubuntu
+            os: ubuntu-latest
+            artifact: MagicGatherer-Ubuntu
 
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
-
-      - name: Install dependencies
+      - name: Install Ubuntu GUI Dependencies
+        if: matrix.name == 'Ubuntu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-shm0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-icccm4 libxcb-cursor0 libxcb-shape0
+      - name: Install Python Requirements
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
-
       - name: Build with PyInstaller
-        run: |
-          pyinstaller --onefile --windowed --name MagicGatherer src/main.py
-
-      - name: Rename Artifact (macOS/Linux)
-        if: matrix.os != 'windows-latest'
-        run: mv dist/MagicGatherer dist/${{ matrix.asset_name }}
-
+        run: pyinstaller --onefile --windowed --name MagicGatherer src/main.py
       - name: Rename Artifact (Windows)
-        if: matrix.os == 'windows-latest'
-        run: ren dist\MagicGatherer.exe ${{ matrix.asset_name }}
-
-      - name: Upload Release Asset
+        if: matrix.name == 'Windows'
+        run: mv dist/MagicGatherer.exe dist/${{ matrix.artifact }}
+      - name: Zip Artifact (macOS)
+        if: matrix.name == 'macOS'
+        run: |
+          cd dist
+          zip -r ${{ matrix.artifact }} MagicGatherer.app
+          cd ..
+      - name: Rename Artifact (Ubuntu)
+        if: matrix.name == 'Ubuntu'
+        run: mv dist/MagicGatherer dist/${{ matrix.artifact }}
+      - name: Create Release and Upload
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/${{ matrix.asset_name }}
+          files: dist/${{ matrix.artifact }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-fedora:
+    name: Build for Fedora
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - name: Install System Dependencies
+        run: dnf install -y git nodejs python3 python3-pip gcc xcb-util-cursor xcb-util-image xcb-util-keysyms xcb-util-renderutil xcb-util-wm libxkbcommon-x11
+
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Install Python Requirements
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r requirements.txt
+          python3 -m pip install pyinstaller
+      - name: Build with PyInstaller
+        run: python3 -m PyInstaller --onefile --windowed --name MagicGatherer src/main.py
+      - name: Rename Artifact
+        run: mv dist/MagicGatherer dist/MagicGatherer-Fedora
+      - name: Create Release and Upload
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/MagicGatherer-Fedora
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
