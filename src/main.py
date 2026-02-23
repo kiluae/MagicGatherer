@@ -19,6 +19,13 @@ from src.api.edhrec import fetch_edhrec_deck
 from src.api.scryfall import fetch_scryfall_paper, fetch_scryfall_digital
 from src.utils.exporters import export_json, export_csv, export_mpc, export_images
 
+def resource_path(relative_path: str) -> str:
+    """ Get absolute path to resource, works for dev and for PyInstaller wrapper """
+    import sys
+    import os
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.abspath(os.path.dirname(os.path.dirname(__file__))), relative_path)
 
 class GatherWorker(QThread):
     log_msg = Signal(str)
@@ -120,7 +127,14 @@ class GatherWorker(QThread):
 class MagicGathererApp(QMainWindow):
     def __init__(self):
         super().__init__()
+        import os
+        from PySide6.QtGui import QIcon
         self.setWindowTitle("MagicGatherer")
+        
+        icon_p = resource_path("icon.png")
+        if os.path.exists(icon_p):
+            self.setWindowIcon(QIcon(icon_p))
+            
         self.resize(650, 750)
         self.setAcceptDrops(True)
 

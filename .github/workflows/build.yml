@@ -49,13 +49,46 @@ jobs:
             pip install -r requirements.txt
             pip install pyinstaller
           fi
+      - name: Generate Icons
+        shell: bash
+        run: |
+          python3 -m pip install Pillow
+          python3 -c "
+          import os, sys; from PIL import Image
+          if os.path.exists('icon.png'):
+              img = Image.open('icon.png')
+              w, h = img.size
+              if w != h:
+                  m = max(w, h)
+                  sq = Image.new('RGBA', (m, m), (255,0,0,0))
+                  sq.paste(img, ((m-w)//2, (m-h)//2))
+                  img = sq
+              img.save('icon.ico', format='ICO', sizes=[(256,256), (128,128), (64,64), (32,32)])
+              img.save('icon.icns', format='ICNS')
+          "
       - name: Build with PyInstaller
         shell: bash
         run: |
+          ICON_ARGS=""
+          DATA_SEP=":"
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            DATA_SEP=";"
+          fi
+          
+          if [ -f "icon.png" ]; then
+            if [ "${{ matrix.os }}" = "macos-latest" ] && [ -f "icon.icns" ]; then
+              ICON_ARGS="--icon=icon.icns --add-data icon.png${DATA_SEP}."
+            elif [ "${{ matrix.os }}" = "windows-latest" ] && [ -f "icon.ico" ]; then
+              ICON_ARGS="--icon=icon.ico --add-data icon.png${DATA_SEP}."
+            else
+              ICON_ARGS="--icon=icon.png --add-data icon.png${DATA_SEP}."
+            fi
+          fi
+          
           if [ "${{ matrix.os }}" = "macos-latest" ]; then
-            python3 -m PyInstaller --onefile --windowed --paths . --hidden-import pkgutil --name MagicGatherer src/main.py
+            python3 -m PyInstaller --onefile --windowed --paths . --hidden-import pkgutil $ICON_ARGS --name MagicGatherer src/main.py
           else
-            pyinstaller --onefile --windowed --paths . --hidden-import pkgutil --name MagicGatherer src/main.py
+            pyinstaller --onefile --windowed --paths . --hidden-import pkgutil $ICON_ARGS --name MagicGatherer src/main.py
           fi
       - name: Rename Artifact (Windows)
         if: matrix.name == 'Windows'
@@ -91,8 +124,29 @@ jobs:
           python3 -m pip install --upgrade pip
           python3 -m pip install -r requirements.txt
           python3 -m pip install pyinstaller
+      - name: Generate Icons
+        run: |
+          python3 -m pip install Pillow
+          python3 -c "
+          import os, sys; from PIL import Image
+          if os.path.exists('icon.png'):
+              img = Image.open('icon.png')
+              w, h = img.size
+              if w != h:
+                  m = max(w, h)
+                  sq = Image.new('RGBA', (m, m), (255,0,0,0))
+                  sq.paste(img, ((m-w)//2, (m-h)//2))
+                  img = sq
+              img.save('icon.ico', format='ICO', sizes=[(256,256), (128,128), (64,64), (32,32)])
+              img.save('icon.icns', format='ICNS')
+          "
       - name: Build with PyInstaller
-        run: python3 -m PyInstaller --onefile --windowed --paths . --hidden-import pkgutil --name MagicGatherer src/main.py
+        run: |
+          ICON_ARGS=""
+          if [ -f "icon.png" ]; then
+            ICON_ARGS="--icon=icon.png --add-data icon.png:."
+          fi
+          python3 -m PyInstaller --onefile --windowed --paths . --hidden-import pkgutil $ICON_ARGS --name MagicGatherer src/main.py
       - name: Rename Artifact
         run: mv dist/MagicGatherer dist/MagicGatherer-Fedora
       - name: Create Release and Upload
