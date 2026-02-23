@@ -83,7 +83,7 @@ def fetch_scryfall_paper(deck_dict: Dict[str, Dict[str, Any]]) -> List[Dict[str,
         time.sleep(0.1)
     return all_data
 
-def fetch_scryfall_arena(deck_dict: Dict[str, Dict[str, Any]], log_cb: Any) -> List[Dict[str, Any]]:
+def fetch_scryfall_digital(deck_dict: Dict[str, Dict[str, Any]], log_cb: Any, game_client: str) -> List[Dict[str, Any]]:
     all_data: List[Dict[str, Any]] = []
     base_url = "https://api.scryfall.com/cards/search"
     basic_lands = {"Plains", "Island", "Swamp", "Mountain", "Forest", "Snow-Covered Plains", "Snow-Covered Island", "Snow-Covered Swamp", "Snow-Covered Mountain", "Snow-Covered Forest", "Wastes"}
@@ -93,18 +93,18 @@ def fetch_scryfall_arena(deck_dict: Dict[str, Dict[str, Any]], log_cb: Any) -> L
         is_basic = name in basic_lands
         
         cached = get_cached_card(name)
-        if cached and (is_basic or "arena" in cached.get("games", [])):
+        if cached and (is_basic or game_client in cached.get("games", [])):
             cached["quantity"] = qty
             all_data.append(cached)
             continue
             
-        log_cb(f"Searching Arena for {name}...")
-        q = f'!"{name}" game:arena'
+        log_cb(f"Searching {game_client.title()} for {name}...")
+        q = f'!"{name}" game:{game_client}'
         resp = requests.get(base_url, params={'q': q})
         
         # Fuzzy Fallback
         if resp.status_code == 404:
-            q_fuzzy = f'{name} game:arena'
+            q_fuzzy = f'{name} game:{game_client}'
             resp = requests.get(base_url, params={'q': q_fuzzy})
             
         if resp.status_code == 200:
@@ -114,7 +114,7 @@ def fetch_scryfall_arena(deck_dict: Dict[str, Dict[str, Any]], log_cb: Any) -> L
                 save_cached_card(name, trimmed)
                 all_data.append(trimmed)
         else:
-            log_cb(f"Skipping {name} (Not found on Scryfall Arena endpoints)")
+            log_cb(f"Skipping {name} (Not found on Scryfall {game_client.title()} endpoints)")
             
         time.sleep(0.1)
     return all_data

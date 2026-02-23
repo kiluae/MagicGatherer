@@ -4,10 +4,17 @@ A high-fidelity MTG deck data fetcher for proxying and deckbuilding.
 
 MagicGatherer provides unparalleled ease in converting standard Magic: The Gathering decklists from various formats into high-resolution, print-ready datasets natively mapping to Scryfall endpoints.
 
+## Why MagicGatherer?
+I built MagicGatherer because I play a *lot* of Historic Brawl on **Magic: The Gathering Arena**. I wanted a seamless way to pull popular commander lists directly from EDHREC and drop them into the digital client, but constantly hit roadblocks. MTG Arena natively rejects imported decks if they contain printings that don't exist digitally. If an EDHREC list had fifty incompatible paper-only cards, Arena would just throw a wall of text and refuse the import. 
+
+Even worse, EDHREC lists don't actively track Basic Lands, and manual spreadsheet scrubbing was exhausting. I needed a tool that could take an EDHREC commander, automatically cross-reference every single card against Scryfall's database to explicitly verify its `game:arena` legality, and silently drop the incompatible cards—while ensuring basic lands bypassed the filters flawlessly. 
+
+Thus, **MagicGatherer** was born. It started as a personal script to bypass Arena's strict import constraints for Historic Brawl and has evolved into a fully-fledged, cross-platform deckbuilding automation suite.
+
 ## Features
 - **High-Res PNG Downloads:** Scrape the absolute highest quality scans for MPC or home printing.
 - **EDHREC Integration:** Automatically pull average composite lists by directly querying commander names.
-- **Arena Legality Filtering:** Guarantee Arena-legal output utilizing a persistent, global API fetching backend perfectly integrated for historic/digital lists, seamlessly bypassing Basic Land barriers.
+- **Digital Client Filtering:** Guarantee client-legal output utilizing a persistent API fetching backend perfectly integrated for MTG Arena and MTGO lists, seamlessly routing specific digital card availability.
 - **Clean Output Pipelines:** Export localized CSV spreadsheets, JSON dictionaries, or raw _Decklist Textfiles_ tailored for broad ingestion.
 
 ## What's New
@@ -22,14 +29,14 @@ You do not need to install Python! Simply navigate to the [Releases](../../relea
 
 1. Launch the executable (`MagicGatherer`).
 2. Select your Input format (Paste your deck, Browse for a `.txt`, or query an EDHREC Commander).
-3. Select your Format (Paper/Arena) and Output options.
+3. Select your Format (Paper/Arena/MTGO) and Output options.
 4. Click **Gather your Magic** and choose a folder!
 
 ## Use Cases
 * **High-Fidelity Proxying:** Generate high-resolution PNG sets specifically for **MPCFill**, third-party proxy sites, or high-quality home printing.
-* **Arena Wildcard Optimization:** Evaluate card data to ensure Rare and Mythic Wildcards are spent on the most impactful upgrades for Arena Brawl.
-* **Brawl Deckbuilding Strategy:** Supplement EDHREC's paper-centric data with Arena Legality Filtering to build optimized digital-only lists.
-* **AI-Assisted Deck Auditing:** Export your current deck and potential upgrade lists to JSON or CSV; upload them to a Local LLM to receive personalized suggestions on cuts and replacements when lacking inspiration.
+* **Digital Client Optimization:** Cross-reference MTGA/MTGO filtered metadata before building a deck to ensure your limited Rare/Mythic Wildcards or Event Tix are mathematically prioritized on the most impactful, high-synergy staples over niche inclusions.
+* **Brawl Deckbuilding Strategy:** Supplement EDHREC's paper-centric data with Digital Legality Filtering to build optimized client-only lists.
+* **AI-Assisted Deck Auditing:** Export your current deck alongside an Arena-filtered EDHREC list to JSON or CSV. Upload them to any LLM (like ChatGPT or Claude) to identify missing engines, optimize mana curves, and receive personalized swap suggestions outside the game.
 * **Comparative Data Analysis:** Open exported datasets in Excel or Google Sheets to manually compare synergy, mana curves, and card types between your paper and online collections.
 * **Scryfall Search Abstraction:** Skip complex query syntax; type in your Commander's name to immediately fetch all relevant card data and images.
 

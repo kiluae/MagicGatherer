@@ -16,7 +16,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from src.utils.parsers import parse_raw_lines, sanitize_filename
 from src.api.edhrec import fetch_edhrec_deck
-from src.api.scryfall import fetch_scryfall_paper, fetch_scryfall_arena
+from src.api.scryfall import fetch_scryfall_paper, fetch_scryfall_digital
 from src.utils.exporters import export_json, export_csv, export_mpc, export_images
 
 
@@ -86,7 +86,7 @@ class GatherWorker(QThread):
                 all_data = fetch_scryfall_paper(deck_dict)
             else:
                 def _filter_cb(msg): self.run_queue_log(msg)
-                all_data = fetch_scryfall_arena(deck_dict, _filter_cb)
+                all_data = fetch_scryfall_digital(deck_dict, _filter_cb, self.format_pref)
 
             self.run_set_progress(50.0)
             self.run_queue_log(f"Successfully processed {len(all_data)} cards.")
@@ -173,8 +173,12 @@ class MagicGathererApp(QMainWindow):
         self.radio_paper = QRadioButton("Paper (Every exact card)")
         self.radio_paper.setChecked(True)
         self.radio_arena = QRadioButton("Arena Only (Skip non-Arena cards)")
+        self.radio_mtgo = QRadioButton("MTGO Only (Skip non-MTGO cards)")
+
         self.layout_format.addWidget(self.radio_paper)
         self.layout_format.addWidget(self.radio_arena)
+        self.layout_format.addWidget(self.radio_mtgo)
+
         self.group_format.setLayout(self.layout_format)
         self.layout_main.addWidget(self.group_format)
 
@@ -275,7 +279,9 @@ class MagicGathererApp(QMainWindow):
         if self.radio_file.isChecked(): source = "file"
         elif self.radio_edhrec.isChecked(): source = "edhrec"
 
-        fmt = "paper" if self.radio_paper.isChecked() else "arena"
+        fmt = "paper"
+        if self.radio_arena.isChecked(): fmt = "arena"
+        elif self.radio_mtgo.isChecked(): fmt = "mtgo"
 
         self.worker = GatherWorker(
             save_dir, source, self.text_paste.toPlainText(), self.entry_file.text(),
