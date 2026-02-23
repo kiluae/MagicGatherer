@@ -18,7 +18,7 @@ Thus, **MagicGatherer** was born. It started as a personal script to bypass Aren
 - **Digital Client Filtering:** Guarantee client-legal output utilizing a persistent API fetching backend perfectly integrated for MTG Arena and MTGO lists, seamlessly routing specific digital card availability.
 - **Clean Output Pipelines:** Export localized CSV spreadsheets, JSON dictionaries, or raw _Decklist Textfiles_ tailored for broad ingestion.
 
-## What's New (v2.0.1 Update)
+## What's New (v2.0.1.1 Update)
 - **Expanded PDF Dimensions**: Generate print-ready 600 DPI proxies explicitly mathematically mapped to standard formats including US Letter, US Legal, US Tabloid, A4, A3, A2, and A1.
 - **Customizable Margins**: Define exact mechanical padding allowances (0px, 75px, 150px) between card cuts to ensure physical scissors never clip artwork.
 - **macOS & Windows Fixes**: Addressed the `base_library.zip` ghosting crash for compiled Windows Pyinstaller builds and the stripped `osascript` terminal execution arguments for macOS `Launch TUI` hooks.
