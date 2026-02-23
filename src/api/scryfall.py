@@ -9,7 +9,7 @@ from src.utils.parsers import sanitize_filename
 CACHE_DIR = Path.home() / ".magicgatherer" / "cache"
 
 def get_cached_card(name: str) -> Dict[str, Any]:
-    CACHE_DIR.mkdir(exist_ok=True)
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
     cache_file = CACHE_DIR / f"{sanitize_filename(name)}.json"
     if cache_file.exists():
         with open(cache_file, 'r', encoding='utf-8') as f:
@@ -17,7 +17,7 @@ def get_cached_card(name: str) -> Dict[str, Any]:
     return {}
 
 def save_cached_card(name: str, card_data: Dict[str, Any]) -> None:
-    CACHE_DIR.mkdir(exist_ok=True)
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
     cache_file = CACHE_DIR / f"{sanitize_filename(name)}.json"
     with open(cache_file, 'w', encoding='utf-8') as f:
         json.dump(card_data, f)
