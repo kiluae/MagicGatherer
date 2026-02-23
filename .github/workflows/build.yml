@@ -17,7 +17,7 @@ jobs:
         include:
           - name: Windows
             os: windows-latest
-            artifact: MagicGatherer-Windows.zip
+            artifact: MagicGatherer.exe
           - name: macOS
             os: macos-latest
             artifact: MagicGatherer.app.zip
@@ -93,15 +93,7 @@ jobs:
       - name: Rename Artifact (Windows)
         if: matrix.name == 'Windows'
         shell: bash
-        run: |
-          cp "Launch TUI.bat" dist/
-          cd dist
-          curl -sL https://github.com/mcmilk/7-Zip-zstd/releases/download/v22.01-v1.5.4-R3/7z22.01-zstd-x64.exe -o 7z-setup.exe
-          mkdir -p MagicGatherer
-          mv MagicGatherer.exe MagicGatherer/
-          mv "Launch TUI.bat" MagicGatherer/
-          powershell Compress-Archive -Path MagicGatherer -DestinationPath ${{ matrix.artifact }}
-          cd ..
+        run: mv dist/MagicGatherer.exe dist/${{ matrix.artifact }}
       - name: Zip Artifact (macOS)
         if: matrix.name == 'macOS'
         run: |
