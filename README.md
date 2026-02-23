@@ -18,13 +18,17 @@ Thus, **MagicGatherer** was born. It started as a personal script to bypass Aren
 - **Digital Client Filtering:** Guarantee client-legal output utilizing a persistent API fetching backend perfectly integrated for MTG Arena and MTGO lists, seamlessly routing specific digital card availability.
 - **Clean Output Pipelines:** Export localized CSV spreadsheets, JSON dictionaries, or raw _Decklist Textfiles_ tailored for broad ingestion.
 
-## What's New
-- **Beautiful Headless TUI:** Run `MagicGatherer --tui` directly in your terminal to instantly ditch the GUI for a breathtaking, highly responsive `rich`-powered Terminal User Interface, unlocking fast pipeline integration with zero app bloat.
-- **PySide6 Foundation:** Completely rewritten UI architecture utilizing the official Qt for Python bindings (PySide6) to guarantee absolutely flawless executable stability across Windows, macOS, and Linux without missing dynamic libraries.
-- **Modal Double-Faced Cards (MDFC) Support:** High-resolution image scraping now automatically identifies dual-sided cards, intelligently downloading the back face dynamically alongside the front face (e.g., `CardName.png` & `CardName (Back).png`).
-- **Smart OS Caching:** Blazing fast repeat queries via automated JSON caching securely nested in your home directory (`~/.magicgatherer/cache`)—immune to macOS Application Bundle read-only crashes.
-- **Clear Cache Interface:** Manage local disk footprint natively from the GUI with a dedicated click-to-wipe "Clear Cache" function.
-- **Fully Automated CI/CD:** Guaranteed 1:1 consistent compiled builds published across Windows, macOS, Ubuntu, and Fedora.
+## What's New (v2.0.1 Update)
+- **Expanded PDF Dimensions**: Generate print-ready 600 DPI proxies explicitly mathematically mapped to standard formats including US Letter, US Legal, US Tabloid, A4, A3, A2, and A1.
+- **Customizable Margins**: Define exact mechanical padding allowances (0px, 75px, 150px) between card cuts to ensure physical scissors never clip artwork.
+- **macOS & Windows Fixes**: Addressed the `base_library.zip` ghosting crash for compiled Windows Pyinstaller builds and the stripped `osascript` terminal execution arguments for macOS `Launch TUI` hooks.
+- **Module Resolution Stability**: Repathing `sys.path` guarantees you can invoke individual scripts natively from any local shell without a single `ModuleNotFoundError`.
+- **Beautiful Headless TUI**: Run `MagicGatherer --tui` directly in your terminal to instantly ditch the GUI for a breathtaking, highly responsive `rich`-powered Terminal User Interface, unlocking fast pipeline integration with zero app bloat.
+- **PySide6 Foundation**: Completely rewritten UI architecture utilizing the official Qt for Python bindings (PySide6) to guarantee absolutely flawless executable stability across Windows, macOS, and Linux without missing dynamic libraries.
+- **Modal Double-Faced Cards (MDFC) Support**: High-resolution image scraping now automatically identifies dual-sided cards, intelligently downloading the back face dynamically alongside the front face (e.g., `CardName.png` & `CardName (Back).png`).
+- **Smart OS Caching**: Blazing fast repeat queries via automated JSON caching securely nested in your home directory (`~/.magicgatherer/cache`)—immune to macOS Application Bundle read-only crashes.
+- **Clear Cache Interface**: Manage local disk footprint natively from the GUI with a dedicated click-to-wipe "Clear Cache" function.
+- **Fully Automated CI/CD**: Guaranteed 1:1 consistent compiled builds published across Windows, macOS, Ubuntu, and Fedora.
 
 ## How to Use
 You do not need to install Python! Simply navigate to the [Releases](../../releases) tab and download the pre-compiled executable tailored for your operating system (Windows, macOS, or Linux). 
@@ -47,7 +51,7 @@ Or use the CLI explicitly for pipeline injections:
 ```bash
 ./MagicGatherer --source edhrec --edhrec "Krenko, Mob Boss" --format mtgo --pdf-padding 125
 ```
-Available flags: `--tui`, `--source <paste|file|edhrec>`, `--file <path>`, `--edhrec <cmd>`, `--format <paper|arena|mtgo>`, `--no-json`, `--no-csv`, `--no-mpc`, `--no-img`, `--no-pdf`, `--pdf-padding <px>`, `--outdir <path>`.
+Available flags: `--tui`, `--source <paste|file|edhrec>`, `--file <path>`, `--edhrec <cmd>`, `--format <paper|arena|mtgo>`, `--no-json`, `--no-csv`, `--no-mpc`, `--no-img`, `--no-pdf`, `--pdf-padding <px>`, `--paper-size <Letter|Legal|Tabloid|A4|A3|A2|A1>`, `--outdir <path>`.
 
 ## Use Cases
 * **High-Fidelity Proxying:** Generate high-resolution PNG sets specifically for **MPCFill**, third-party proxy sites, or high-quality home printing.
