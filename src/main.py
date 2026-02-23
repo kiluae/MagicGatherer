@@ -217,11 +217,33 @@ class MagicGathererApp(QMainWindow):
         self.group_log.setLayout(self.layout_log)
         self.layout_main.addWidget(self.group_log)
 
-        # Branding
+        # Branding & Cache Clear
+        self.layout_bottom = QHBoxLayout()
+        
+        self.btn_clear_cache = QPushButton("Clear Cache")
+        self.btn_clear_cache.setStyleSheet("font-size: 10px; color: gray;")
+        self.btn_clear_cache.setMaximumWidth(80)
+        self.btn_clear_cache.clicked.connect(self.clear_cache)
+        
         self.lbl_brand = QLabel("by yuhidev")
-        self.lbl_brand.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.lbl_brand.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.lbl_brand.setStyleSheet("font-size: 10px;")
-        self.layout_main.addWidget(self.lbl_brand)
+        
+        self.layout_bottom.addWidget(self.btn_clear_cache)
+        self.layout_bottom.addWidget(self.lbl_brand)
+        self.layout_main.addLayout(self.layout_bottom)
+
+    def clear_cache(self):
+        import shutil
+        cache_dir = Path.home() / ".magicgatherer" / "cache"
+        if cache_dir.exists():
+            try:
+                shutil.rmtree(cache_dir)
+                QMessageBox.information(self, "Cache Cleared", "Local Scryfall JSON cache has been successfully wiped.")
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"Failed to clear cache: {e}")
+        else:
+            QMessageBox.information(self, "Cache Cleared", "Cache is already empty!")
 
     def toggle_inputs(self):
         self.text_paste.setEnabled(self.radio_paste.isChecked())
