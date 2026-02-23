@@ -2,8 +2,7 @@ import json
 import time
 from pathlib import Path
 import requests
-import xml.etree.ElementTree as ET
-from xml.dom import minidom
+import csv
 from typing import List, Dict, Any, Callable, Optional
 from src.utils.parsers import sanitize_filename
 
@@ -12,19 +11,20 @@ def export_json(all_data: List[Dict[str, Any]], save_dir: Path, safe_pref: str) 
     with open(fp, 'w', encoding='utf-8') as f: 
         json.dump(all_data, f, indent=4)
 
-def export_xml(all_data: List[Dict[str, Any]], save_dir: Path, safe_pref: str) -> None:
-    fp = save_dir / f"{safe_pref}.xml"
-    root = ET.Element("order")
-    fronts = ET.SubElement(root, "fronts")
-    for i, c in enumerate(all_data):
-        ce = ET.SubElement(fronts, "card")
-        ET.SubElement(ce, "slots").text = str(i)
-        ET.SubElement(ce, "name").text = str(c.get("name", ""))
-        ET.SubElement(ce, "query").text = str(c.get("name", "")).lower()
-        ET.SubElement(ce, "quantity").text = str(c.get("quantity", 1))
-    xml_str = minidom.parseString(ET.tostring(root)).toprettyxml(indent="  ")
-    with open(fp, "w", encoding="utf-8") as f: 
-        f.write(xml_str)
+def export_csv(all_data: List[Dict[str, Any]], save_dir: Path, safe_pref: str) -> None:
+    fp = save_dir / f"{safe_pref}.csv"
+    with open(fp, 'w', encoding='utf-8', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(["Quantity", "Name", "Type", "Mana Cost", "CMC", "Oracle Text"])
+        for c in all_data:
+            writer.writerow([
+                c.get("quantity", 1),
+                c.get("name", ""),
+                c.get("type_line", ""),
+                c.get("mana_cost", ""),
+                c.get("cmc", ""),
+                c.get("oracle_text", "")
+            ])
 
 def export_mpc(all_data: List[Dict[str, Any]], save_dir: Path, safe_pref: str) -> None:
     mpc_path = save_dir / f"{safe_pref}_decklist.txt"

@@ -17,7 +17,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from src.utils.parsers import parse_raw_lines, sanitize_filename
 from src.api.edhrec import fetch_edhrec_deck
 from src.api.scryfall import fetch_scryfall_paper, fetch_scryfall_arena
-from src.utils.exporters import export_json, export_xml, export_mpc, export_images
+from src.utils.exporters import export_json, export_csv, export_mpc, export_images
 
 
 class GatherWorker(QThread):
@@ -28,7 +28,7 @@ class GatherWorker(QThread):
 
     def __init__(self, save_dir: Path, source: str, raw_paste: str, file_path: str,
                  edhrec_cmd: str, format_pref: str,
-                 do_json: bool, do_xml: bool, do_mpc: bool, do_img: bool):
+                 do_json: bool, do_csv: bool, do_mpc: bool, do_img: bool):
         super().__init__()
         self.save_dir = save_dir
         self.source = source
@@ -37,7 +37,7 @@ class GatherWorker(QThread):
         self.edhrec_cmd = edhrec_cmd
         self.format_pref = format_pref
         self.do_json = do_json
-        self.do_xml = do_xml
+        self.do_csv = do_csv
         self.do_mpc = do_mpc
         self.do_img = do_img
 
@@ -97,9 +97,9 @@ class GatherWorker(QThread):
                 export_json(all_data, self.save_dir, safe_pref)
                 self.run_queue_log(f"Saved JSON: {self.save_dir / f'{safe_pref}.json'}")
 
-            if self.do_xml:
-                export_xml(all_data, self.save_dir, safe_pref)
-                self.run_queue_log(f"Saved XML: {self.save_dir / f'{safe_pref}.xml'}")
+            if self.do_csv:
+                export_csv(all_data, self.save_dir, safe_pref)
+                self.run_queue_log(f"Saved CSV: {self.save_dir / f'{safe_pref}.csv'}")
 
             if self.do_mpc:
                 export_mpc(all_data, self.save_dir, safe_pref)
@@ -183,14 +183,14 @@ class MagicGathererApp(QMainWindow):
         self.layout_output = QHBoxLayout()
         self.chk_json = QCheckBox("JSON")
         self.chk_json.setChecked(True)
-        self.chk_xml = QCheckBox("XML")
-        self.chk_xml.setChecked(True)
+        self.chk_csv = QCheckBox("CSV")
+        self.chk_csv.setChecked(True)
         self.chk_mpc = QCheckBox("Decklist Textfile")
         self.chk_mpc.setChecked(True)
         self.chk_img = QCheckBox("High-Res Images")
         
         self.layout_output.addWidget(self.chk_json)
-        self.layout_output.addWidget(self.chk_xml)
+        self.layout_output.addWidget(self.chk_csv)
         self.layout_output.addWidget(self.chk_mpc)
         self.layout_output.addWidget(self.chk_img)
         self.group_output.setLayout(self.layout_output)
@@ -280,7 +280,7 @@ class MagicGathererApp(QMainWindow):
         self.worker = GatherWorker(
             save_dir, source, self.text_paste.toPlainText(), self.entry_file.text(),
             self.entry_edhrec.text(), fmt,
-            self.chk_json.isChecked(), self.chk_xml.isChecked(),
+            self.chk_json.isChecked(), self.chk_csv.isChecked(),
             self.chk_mpc.isChecked(), self.chk_img.isChecked()
         )
 
