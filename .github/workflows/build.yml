@@ -94,7 +94,6 @@ jobs:
         if: matrix.name == 'Windows'
         shell: bash
         run: |
-          mv dist/MagicGatherer.exe dist/MagicGatherer.exe
           cp "Launch TUI.bat" dist/
           cd dist
           curl -sL https://github.com/mcmilk/7-Zip-zstd/releases/download/v22.01-v1.5.4-R3/7z22.01-zstd-x64.exe -o 7z-setup.exe
@@ -109,9 +108,6 @@ jobs:
           cd dist
           zip -yr ${{ matrix.artifact }} MagicGatherer.app
           cd ..
-      - name: Rename Artifact (Ubuntu)
-        if: matrix.name == 'Ubuntu'
-        run: mv dist/MagicGatherer dist/${{ matrix.artifact }}
       - name: Create Release and Upload
         uses: softprops/action-gh-release@v1
         with:
@@ -157,8 +153,6 @@ jobs:
             ICON_ARGS="--icon=icon.png --add-data icon.png:."
           fi
           python3 -m PyInstaller --onefile --windowed --paths . --hidden-import pkgutil $ICON_ARGS --name MagicGatherer src/main.py
-      - name: Rename Artifact
-        run: mv dist/MagicGatherer dist/MagicGatherer
       - name: Create Release and Upload
         uses: softprops/action-gh-release@v1
         with:
