@@ -4,7 +4,7 @@ from pathlib import Path
 import requests
 import csv
 from typing import List, Dict, Any, Callable, Optional
-from PIL import Image
+from PIL import Image, ImageDraw
 from src.utils.parsers import sanitize_filename
 
 def export_json(all_data: List[Dict[str, Any]], save_dir: Path, safe_pref: str) -> None:
@@ -92,7 +92,7 @@ def export_images(all_data: List[Dict[str, Any]], save_dir: Path, safe_pref: str
     log_callback("Image download complete!")
 
 
-def export_pdf(all_data: List[Dict[str, Any]], save_dir: Path, safe_pref: str, log_callback: Callable[[str], None], padding_px: int = 75) -> None:
+def export_pdf(all_data: List[Dict[str, Any]], save_dir: Path, safe_pref: str, log_callback: Callable[[str], None], padding_px: int = 75, draw_guides: bool = False) -> None:
     img_dir = save_dir / f"{safe_pref}_images"
     if not img_dir.exists():
         log_callback("Error: Image directory not found. Cannot generate PDF.")
@@ -166,6 +166,27 @@ def export_pdf(all_data: List[Dict[str, Any]], save_dir: Path, safe_pref: str, l
                 pos_y: int = int(MARGIN_Y + (y_idx * (CARD_HEIGHT + padding_px)))
                 
                 current_page.paste(img, (pos_x, pos_y))
+                
+                if draw_guides:
+                    draw = ImageDraw.Draw(current_page)
+                    color = (200, 200, 200)
+                    length = 15
+                    
+                    # Top Left
+                    draw.line([(pos_x, pos_y), (pos_x - length, pos_y)], fill=color)
+                    draw.line([(pos_x, pos_y), (pos_x, pos_y - length)], fill=color)
+                    
+                    # Top Right
+                    draw.line([(pos_x + CARD_WIDTH, pos_y), (pos_x + CARD_WIDTH + length, pos_y)], fill=color)
+                    draw.line([(pos_x + CARD_WIDTH, pos_y), (pos_x + CARD_WIDTH, pos_y - length)], fill=color)
+                    
+                    # Bottom Left
+                    draw.line([(pos_x, pos_y + CARD_HEIGHT), (pos_x - length, pos_y + CARD_HEIGHT)], fill=color)
+                    draw.line([(pos_x, pos_y + CARD_HEIGHT), (pos_x, pos_y + CARD_HEIGHT + length)], fill=color)
+                    
+                    # Bottom Right
+                    draw.line([(pos_x + CARD_WIDTH, pos_y + CARD_HEIGHT), (pos_x + CARD_WIDTH + length, pos_y + CARD_HEIGHT)], fill=color)
+                    draw.line([(pos_x + CARD_WIDTH, pos_y + CARD_HEIGHT), (pos_x + CARD_WIDTH, pos_y + CARD_HEIGHT + length)], fill=color)
                 
                 x_idx += 1
                 if x_idx >= 3:

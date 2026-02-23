@@ -12,7 +12,10 @@ from PySide6.QtWidgets import (
     QCheckBox, QLabel, QProgressBar, QFileDialog, QMessageBox,
     QSpinBox
 )
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal, QUrl
+from PySide6.QtGui import QDesktopServices
+import json
+import os
 
 # Adjust path so we can import modules when running main.py directly
 sys.path.append(str(Path(__file__).resolve().parent.parent))
@@ -34,7 +37,8 @@ def gather_cards(save_dir: Path, source: str, raw_paste: str, file_path: str,
                  edhrec_cmd: str, format_pref: str,
                  do_json: bool, do_csv: bool, do_mpc: bool, do_img: bool, do_pdf: bool,
                  log_cb: Callable[[str], None], progress_cb: Callable[[float], None],
-                 pdf_padding: int = 75) -> None:
+                 pdf_padding: int = 75, skip_cb: Callable[[str], None] = None,
+                 draw_guides: bool = False) -> None:
     deck_dict: Dict[str, Dict[str, Any]] = {}
     output_prefix = "deck"
 
@@ -68,8 +72,7 @@ def gather_cards(save_dir: Path, source: str, raw_paste: str, file_path: str,
     if format_pref == "paper":
         all_data = fetch_scryfall_paper(deck_dict)
     else:
-        def _filter_cb(msg): log_cb(msg)
-        all_data = fetch_scryfall_digital(deck_dict, _filter_cb, format_pref)
+        all_data = fetch_scryfall_digital(deck_dict, log_cb, format_pref, skip_cb=skip_cb)
 
     progress_cb(50.0)
     log_cb(f"Successfully processed {len(all_data)} cards.")
@@ -92,7 +95,7 @@ def gather_cards(save_dir: Path, source: str, raw_paste: str, file_path: str,
     if do_img:
         export_images(all_data, save_dir, safe_pref, log_cb, progress_cb, start_prog=50.0, end_prog=90.0)
         if do_pdf:
-            export_pdf(all_data, save_dir, safe_pref, log_cb, padding_px=pdf_padding)
+            export_pdf(all_data, save_dir, safe_pref, log_cb, padding_px=pdf_padding, draw_guides=draw_guides)
             progress_cb(100.0)
         else:
             progress_cb(100.0)
@@ -104,6 +107,7 @@ def gather_cards(save_dir: Path, source: str, raw_paste: str, file_path: str,
 
 class GatherWorker(QThread):
     log_msg = Signal(str)
+    skipped_msg = Signal(str)
     progress = Signal(float)
     finished = Signal(bool)
     error = Signal(str)
@@ -111,7 +115,7 @@ class GatherWorker(QThread):
     def __init__(self, save_dir: Path, source: str, raw_paste: str, file_path: str,
                  edhrec_cmd: str, format_pref: str,
                  do_json: bool, do_csv: bool, do_mpc: bool, do_img: bool, do_pdf: bool,
-                 pdf_padding: int = 75):
+                 pdf_padding: int = 75, draw_guides: bool = False):
         super().__init__()
         self.save_dir = save_dir
         self.source = source
@@ -125,9 +129,13 @@ class GatherWorker(QThread):
         self.do_img = do_img
         self.do_pdf = do_pdf
         self.pdf_padding = pdf_padding
+        self.draw_guides = draw_guides
 
     def run_queue_log(self, msg: str):
         self.log_msg.emit(msg)
+
+    def run_queue_skipped(self, msg: str):
+        self.skipped_msg.emit(msg)
 
     def run_set_progress(self, val: float):
         self.progress.emit(val)
@@ -138,7 +146,8 @@ class GatherWorker(QThread):
                 self.save_dir, self.source, self.raw_paste, self.file_path,
                 self.edhrec_cmd, self.format_pref,
                 self.do_json, self.do_csv, self.do_mpc, self.do_img, self.do_pdf,
-                self.run_queue_log, self.run_set_progress, self.pdf_padding
+                self.run_queue_log, self.run_set_progress, self.pdf_padding,
+                skip_cb=self.run_queue_skipped, draw_guides=self.draw_guides
             )
             self.finished.emit(True)
         except Exception as e:
@@ -156,9 +165,10 @@ class MagicGathererApp(QMainWindow):
         if os.path.exists(icon_p):
             self.setWindowIcon(QIcon(icon_p))
             
-        self.resize(650, 750)
+        self.resize(800, 800)
         self.setAcceptDrops(True)
-
+        
+        self.config_path = Path.home() / ".magicgatherer" / "config.json"
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
         self.layout_main = QVBoxLayout(self.central_widget)
@@ -240,6 +250,12 @@ class MagicGathererApp(QMainWindow):
         self.chk_pdf = QCheckBox("PDF Print Proxies")
         self.chk_pdf.setChecked(True)
         
+        self.chk_guides = QCheckBox("Print Cut Guides")
+        self.chk_guides.setChecked(True)
+        
+        self.chk_open_folder = QCheckBox("Open Output Folder")
+        self.chk_open_folder.setChecked(True)
+        
         self.spin_pdf_pad = QSpinBox()
         self.spin_pdf_pad.setRange(0, 300)
         self.spin_pdf_pad.setValue(75)
@@ -248,6 +264,8 @@ class MagicGathererApp(QMainWindow):
         
         self.layout_output_bot.addWidget(self.chk_img)
         self.layout_output_bot.addWidget(self.chk_pdf)
+        self.layout_output_bot.addWidget(self.chk_guides)
+        self.layout_output_bot.addWidget(self.chk_open_folder)
         self.layout_output_bot.addWidget(self.spin_pdf_pad)
         self.layout_output.addLayout(self.layout_output_bot)
         
@@ -266,14 +284,27 @@ class MagicGathererApp(QMainWindow):
         self.layout_main.addWidget(self.progress_bar)
 
         # ====== SECTION 5: Console Log ======
-        self.group_log = QGroupBox("Log Output")
-        self.layout_log = QVBoxLayout()
+        self.group_log = QGroupBox("Console Log")
+        self.layout_log_main = QHBoxLayout()
+        
         self.text_log = QTextEdit()
         self.text_log.setReadOnly(True)
+        self.text_log.setPlaceholderText("Execution logs will appear here...")
         self.text_log.setStyleSheet("background-color: black; color: lime;")
-        self.layout_log.addWidget(self.text_log)
-        self.group_log.setLayout(self.layout_log)
+        
+        self.skipped_area = QTextEdit()
+        self.skipped_area.setReadOnly(True)
+        self.skipped_area.setPlaceholderText("Any skipped or non-legal cards will appear here...")
+        self.skipped_area.setStyleSheet("background-color: #1a0000; color: #ffb3b3;")
+        
+        self.layout_log_main.addWidget(self.text_log, 2)
+        self.layout_log_main.addWidget(self.skipped_area, 1)
+        
+        self.group_log.setLayout(self.layout_log_main)
         self.layout_main.addWidget(self.group_log)
+        
+        # Load config if exists
+        self.load_config()
 
         # Branding & Cache Clear
         self.layout_bottom = QHBoxLayout()
@@ -338,47 +369,87 @@ class MagicGathererApp(QMainWindow):
         save_dir_str = QFileDialog.getExistingDirectory(self, "Select Folder to Save Files")
         if not save_dir_str:
             return
-
+            
         save_dir = Path(save_dir_str)
-        self.btn_run.setEnabled(False)
-        self.btn_run.setText("GATHERING...")
-        self.progress_bar.setValue(0)
-        self.text_log.clear()
-
-        # Gather state
         source = "paste"
         if self.radio_file.isChecked(): source = "file"
         elif self.radio_edhrec.isChecked(): source = "edhrec"
-
-        fmt = "paper"
-        if self.radio_arena.isChecked(): fmt = "arena"
-        elif self.radio_mtgo.isChecked(): fmt = "mtgo"
-
+        
+        fmt_pref = "paper"
+        if self.radio_arena.isChecked(): fmt_pref = "arena"
+        elif self.radio_mtgo.isChecked(): fmt_pref = "mtgo"
+        
+        self.save_config() # Sticky settings
+        
+        self.btn_run.setEnabled(False)
+        self.text_log.clear()
+        self.skipped_area.clear()
+        
         self.worker = GatherWorker(
             save_dir, source, self.text_paste.toPlainText(), self.entry_file.text(),
-            self.entry_edhrec.text(), fmt,
-            self.chk_json.isChecked(), self.chk_csv.isChecked(),
-            self.chk_mpc.isChecked(), self.chk_img.isChecked(), self.chk_pdf.isChecked(),
-            self.spin_pdf_pad.value()
+            self.entry_edhrec.text(), fmt_pref,
+            self.chk_json.isChecked(), self.chk_csv.isChecked(), self.chk_mpc.isChecked(),
+            self.chk_img.isChecked(), self.chk_pdf.isChecked(),
+            self.spin_pdf_pad.value(), self.chk_guides.isChecked()
         )
-
         self.worker.log_msg.connect(self.append_log)
-        self.worker.progress.connect(lambda v: self.progress_bar.setValue(int(v)))
-        self.worker.finished.connect(self.on_worker_finished)
-        self.worker.error.connect(self.on_worker_error)
-        
+        self.worker.skipped_msg.connect(self.skipped_area.append)
+        self.worker.progress.connect(self.progress_bar.setValue)
+        self.worker.finished.connect(lambda: self.on_finished(save_dir))
+        self.worker.error.connect(self.on_error)
         self.worker.start()
 
-    def on_worker_finished(self, success: bool):
+    def on_finished(self, save_dir: Path):
         self.btn_run.setEnabled(True)
-        self.btn_run.setText("Gather your Magic")
-        QMessageBox.information(self, "Done", "MagicGatherer has finished compiling your files!")
+        if self.chk_open_folder.isChecked():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(save_dir)))
+        QMessageBox.information(self, "Success", "Magic Gathering Complete!")
 
-    def on_worker_error(self, error_str: str):
-        self.append_log(f"ERROR: {error_str}")
+    def on_error(self, err: str):
         self.btn_run.setEnabled(True)
-        self.btn_run.setText("Gather your Magic")
-        QMessageBox.critical(self, "Error", f"An error occurred:\n{error_str}")
+        QMessageBox.critical(self, "Error", err)
+
+    def load_config(self):
+        if not self.config_path.exists():
+            return
+        try:
+            with open(self.config_path, "r") as f:
+                c = json.load(f)
+                self.chk_json.setChecked(c.get("json", True))
+                self.chk_csv.setChecked(c.get("csv", True))
+                self.chk_mpc.setChecked(c.get("mpc", True))
+                self.chk_img.setChecked(c.get("img", True))
+                self.chk_pdf.setChecked(c.get("pdf", True))
+                self.chk_guides.setChecked(c.get("guides", True))
+                self.chk_open_folder.setChecked(c.get("open_folder", True))
+                self.spin_pdf_pad.setValue(c.get("padding", 75))
+                
+                f_pref = c.get("format", "paper")
+                if f_pref == "arena": self.radio_arena.setChecked(True)
+                elif f_pref == "mtgo": self.radio_mtgo.setChecked(True)
+                else: self.radio_paper.setChecked(True)
+        except:
+            pass
+
+    def save_config(self):
+        self.config_path.parent.mkdir(parents=True, exist_ok=True)
+        f_pref = "paper"
+        if self.radio_arena.isChecked(): f_pref = "arena"
+        elif self.radio_mtgo.isChecked(): f_pref = "mtgo"
+        
+        c = {
+            "json": self.chk_json.isChecked(),
+            "csv": self.chk_csv.isChecked(),
+            "mpc": self.chk_mpc.isChecked(),
+            "img": self.chk_img.isChecked(),
+            "pdf": self.chk_pdf.isChecked(),
+            "guides": self.chk_guides.isChecked(),
+            "open_folder": self.chk_open_folder.isChecked(),
+            "padding": self.spin_pdf_pad.value(),
+            "format": f_pref
+        }
+        with open(self.config_path, "w") as f:
+            json.dump(c, f)
 
     # Drag and Drop Configs
     def dragEnterEvent(self, event):
@@ -409,6 +480,7 @@ def run_tui():
     parser.add_argument("--no-mpc", action="store_true", help="Disable Decklist textfile export")
     parser.add_argument("--no-img", action="store_true", help="Disable high-res image download")
     parser.add_argument("--no-pdf", action="store_true", help="Disable 9-card proxy PDF generation")
+    parser.add_argument("--no-guides", action="store_true", help="Disable PDF cutting guide marks")
     parser.add_argument("--pdf-padding", type=int, default=75, help="PDF proxy border cutting space in pixels (Default: 75 px)")
     parser.add_argument("--outdir", type=str, default=".", help="Output directory path")
     args = parser.parse_args()
@@ -452,7 +524,9 @@ def run_tui():
                 save_dir, args.source, args.paste, args.file,
                 args.edhrec, args.format,
                 not args.no_json, not args.no_csv, not args.no_mpc, not args.no_img, not args.no_pdf,
-                log_cb, prog_cb, args.pdf_padding
+                log_cb, prog_cb, args.pdf_padding,
+                skip_cb=lambda m: log_cb(f"Skipped: {m}"),
+                draw_guides=not args.no_guides
             )
             progress.update(task1, completed=100, description="[bold green]Finished![/bold green]")
         except Exception as e:

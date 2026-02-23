@@ -83,7 +83,7 @@ def fetch_scryfall_paper(deck_dict: Dict[str, Dict[str, Any]]) -> List[Dict[str,
         time.sleep(0.1)
     return all_data
 
-def fetch_scryfall_digital(deck_dict: Dict[str, Dict[str, Any]], log_cb: Any, game_client: str) -> List[Dict[str, Any]]:
+def fetch_scryfall_digital(deck_dict: Dict[str, Dict[str, Any]], log_cb: Any, game_client: str, skip_cb: Any = None) -> List[Dict[str, Any]]:
     all_data: List[Dict[str, Any]] = []
     base_url = "https://api.scryfall.com/cards/search"
     basic_lands = {"Plains", "Island", "Swamp", "Mountain", "Forest", "Snow-Covered Plains", "Snow-Covered Island", "Snow-Covered Swamp", "Snow-Covered Mountain", "Snow-Covered Forest", "Wastes"}
@@ -114,7 +114,10 @@ def fetch_scryfall_digital(deck_dict: Dict[str, Dict[str, Any]], log_cb: Any, ga
                 save_cached_card(name, trimmed)
                 all_data.append(trimmed)
         else:
-            log_cb(f"Skipping {name} (Not found on Scryfall {game_client.title()} endpoints)")
+            msg = f"Skipping {name} (Not found on Scryfall {game_client.title()} endpoints)"
+            log_cb(msg)
+            if skip_cb:
+                skip_cb(name)
             
         time.sleep(0.1)
     return all_data

@@ -90,10 +90,6 @@ jobs:
           else
             pyinstaller --onefile --windowed --paths . --hidden-import pkgutil $ICON_ARGS --name MagicGatherer src/main.py
           fi
-      - name: Rename Artifact (Windows)
-        if: matrix.name == 'Windows'
-        shell: bash
-        run: mv dist/MagicGatherer.exe dist/${{ matrix.artifact }}
       - name: Zip Artifact (macOS)
         if: matrix.name == 'macOS'
         run: |
