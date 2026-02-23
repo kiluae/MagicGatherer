@@ -6,7 +6,7 @@ import requests
 from typing import Dict, List, Any
 from src.utils.parsers import sanitize_filename
 
-CACHE_DIR = Path(".cache")
+CACHE_DIR = Path.home() / ".magicgatherer" / "cache"
 
 def get_cached_card(name: str) -> Dict[str, Any]:
     CACHE_DIR.mkdir(exist_ok=True)

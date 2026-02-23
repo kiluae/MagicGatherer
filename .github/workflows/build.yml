@@ -39,11 +39,22 @@ jobs:
           sudo apt-get install -y libxcb-shm0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-icccm4 libxcb-cursor0 libxcb-shape0
       - name: Install Python Requirements
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            python3 -m pip install --upgrade pip
+            python3 -m pip install -r requirements.txt
+            python3 -m pip install pyinstaller
+          else
+            python -m pip install --upgrade pip
+            pip install -r requirements.txt
+            pip install pyinstaller
+          fi
       - name: Build with PyInstaller
-        run: pyinstaller --onefile --windowed --hidden-import pkgutil --name MagicGatherer src/main.py
+        run: |
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            python3 -m PyInstaller --onefile --windowed --hidden-import pkgutil --name MagicGatherer src/main.py
+          else
+            pyinstaller --onefile --windowed --hidden-import pkgutil --name MagicGatherer src/main.py
+          fi
       - name: Rename Artifact (Windows)
         if: matrix.name == 'Windows'
         run: mv dist/MagicGatherer.exe dist/${{ matrix.artifact }}

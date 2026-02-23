@@ -4,12 +4,12 @@ import time
 from pathlib import Path
 from typing import Dict, Any
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QGroupBox, QRadioButton, QTextEdit, QLineEdit, QPushButton,
     QCheckBox, QLabel, QProgressBar, QFileDialog, QMessageBox
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PySide6.QtCore import Qt, QThread, Signal
 
 # Adjust path so we can import modules when running main.py directly
 sys.path.append(str(Path(__file__).resolve().parent.parent))
@@ -21,10 +21,10 @@ from src.utils.exporters import export_json, export_xml, export_mpc, export_imag
 
 
 class GatherWorker(QThread):
-    log_msg = pyqtSignal(str)
-    progress = pyqtSignal(float)
-    finished = pyqtSignal(bool)
-    error = pyqtSignal(str)
+    log_msg = Signal(str)
+    progress = Signal(float)
+    finished = Signal(bool)
+    error = Signal(str)
 
     def __init__(self, save_dir: Path, source: str, raw_paste: str, file_path: str,
                  edhrec_cmd: str, format_pref: str,
@@ -232,7 +232,7 @@ class MagicGathererApp(QMainWindow):
     def browse_file(self):
         v, _ = QFileDialog.getOpenFileName(self, "Open List", "", "Text Files (*.txt);;All Files (*)")
         if v:
-            self.entry_file.setText(v)
+            self.entry_file.setText(str(v))
 
     def append_log(self, text: str):
         self.text_log.append(text)
