@@ -2,7 +2,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Callable
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -17,7 +17,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from src.utils.parsers import parse_raw_lines, sanitize_filename
 from src.api.edhrec import fetch_edhrec_deck
 from src.api.scryfall import fetch_scryfall_paper, fetch_scryfall_digital
-from src.utils.exporters import export_json, export_csv, export_mpc, export_images
+from src.utils.exporters import export_json, export_csv, export_mpc, export_images, export_pdf
 
 def resource_path(relative_path: str) -> str:
     """ Get absolute path to resource, works for dev and for PyInstaller wrapper """
@@ -27,6 +27,77 @@ def resource_path(relative_path: str) -> str:
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.join(os.path.abspath(os.path.dirname(os.path.dirname(__file__))), relative_path)
 
+def gather_cards(save_dir: Path, source: str, raw_paste: str, file_path: str,
+                 edhrec_cmd: str, format_pref: str,
+                 do_json: bool, do_csv: bool, do_mpc: bool, do_img: bool, do_pdf: bool,
+                 log_cb: Callable[[str], None], progress_cb: Callable[[float], None]) -> None:
+    deck_dict: Dict[str, Dict[str, Any]] = {}
+    output_prefix = "deck"
+
+    if source == "paste":
+        raw = raw_paste.strip()
+        if not raw:
+            raise ValueError("Paste area is empty!")
+        deck_dict = parse_raw_lines(raw.split('\n'))
+        output_prefix = "pasted_deck"
+    elif source == "file":
+        fp = file_path.strip()
+        p = Path(fp)
+        if not p.exists():
+            raise ValueError("File not found!")
+        with open(p, 'r', encoding='utf-8') as f:
+            deck_dict = parse_raw_lines(f.readlines())
+        output_prefix = p.stem
+    elif source == "edhrec":
+        cmd = edhrec_cmd.strip()
+        if not cmd:
+            raise ValueError("Commander name is empty!")
+        log_cb(f"Fetching EDHREC data for {cmd}...")
+        output_prefix = fetch_edhrec_deck(cmd, deck_dict)
+
+    if not deck_dict:
+        raise ValueError("No cards found to process.")
+    log_cb(f"Found {len(deck_dict)} unique cards. Fetching from Scryfall...")
+
+    progress_cb(10.0)
+
+    if format_pref == "paper":
+        all_data = fetch_scryfall_paper(deck_dict)
+    else:
+        def _filter_cb(msg): log_cb(msg)
+        all_data = fetch_scryfall_digital(deck_dict, _filter_cb, format_pref)
+
+    progress_cb(50.0)
+    log_cb(f"Successfully processed {len(all_data)} cards.")
+
+    safe_pref = sanitize_filename(output_prefix)
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    if do_json:
+        export_json(all_data, save_dir, safe_pref)
+        log_cb(f"Saved JSON: {save_dir / f'{safe_pref}.json'}")
+
+    if do_csv:
+        export_csv(all_data, save_dir, safe_pref)
+        log_cb(f"Saved CSV: {save_dir / f'{safe_pref}.csv'}")
+
+    if do_mpc:
+        export_mpc(all_data, save_dir, safe_pref)
+        log_cb(f"Saved Decklist Textfile: {save_dir / f'{safe_pref}_decklist.txt'}")
+
+    if do_img:
+        export_images(all_data, save_dir, safe_pref, log_cb, progress_cb, start_prog=50.0, end_prog=90.0)
+        if do_pdf:
+            export_pdf(all_data, save_dir, safe_pref, log_cb)
+            progress_cb(100.0)
+        else:
+            progress_cb(100.0)
+    else:
+        progress_cb(100.0)
+
+    log_cb("=== ALL TASKS FINISHED SUCCESSFULLY ===")
+
+
 class GatherWorker(QThread):
     log_msg = Signal(str)
     progress = Signal(float)
@@ -35,7 +106,7 @@ class GatherWorker(QThread):
 
     def __init__(self, save_dir: Path, source: str, raw_paste: str, file_path: str,
                  edhrec_cmd: str, format_pref: str,
-                 do_json: bool, do_csv: bool, do_mpc: bool, do_img: bool):
+                 do_json: bool, do_csv: bool, do_mpc: bool, do_img: bool, do_pdf: bool):
         super().__init__()
         self.save_dir = save_dir
         self.source = source
@@ -47,6 +118,7 @@ class GatherWorker(QThread):
         self.do_csv = do_csv
         self.do_mpc = do_mpc
         self.do_img = do_img
+        self.do_pdf = do_pdf
 
     def run_queue_log(self, msg: str):
         self.log_msg.emit(msg)
@@ -54,72 +126,15 @@ class GatherWorker(QThread):
     def run_set_progress(self, val: float):
         self.progress.emit(val)
 
-    def run_log_callback(self, val: str):
-        self.log_msg.emit(val)
-
     def run(self):
         try:
-            deck_dict: Dict[str, Dict[str, Any]] = {}
-            output_prefix = "deck"
-
-            if self.source == "paste":
-                raw = self.raw_paste.strip()
-                if not raw:
-                    raise ValueError("Paste area is empty!")
-                deck_dict = parse_raw_lines(raw.split('\n'))
-                output_prefix = "pasted_deck"
-            elif self.source == "file":
-                fp = self.file_path.strip()
-                p = Path(fp)
-                if not p.exists():
-                    raise ValueError("File not found!")
-                with open(p, 'r', encoding='utf-8') as f:
-                    deck_dict = parse_raw_lines(f.readlines())
-                output_prefix = p.stem
-            elif self.source == "edhrec":
-                cmd = self.edhrec_cmd.strip()
-                if not cmd:
-                    raise ValueError("Commander name is empty!")
-                self.run_queue_log(f"Fetching EDHREC data for {cmd}...")
-                output_prefix = fetch_edhrec_deck(cmd, deck_dict)
-
-            if not deck_dict:
-                raise ValueError("No cards found to process.")
-            self.run_queue_log(f"Found {len(deck_dict)} unique cards. Fetching from Scryfall...")
-
-            self.run_set_progress(10.0)
-
-            if self.format_pref == "paper":
-                all_data = fetch_scryfall_paper(deck_dict)
-            else:
-                def _filter_cb(msg): self.run_queue_log(msg)
-                all_data = fetch_scryfall_digital(deck_dict, _filter_cb, self.format_pref)
-
-            self.run_set_progress(50.0)
-            self.run_queue_log(f"Successfully processed {len(all_data)} cards.")
-
-            safe_pref = sanitize_filename(output_prefix)
-
-            if self.do_json:
-                export_json(all_data, self.save_dir, safe_pref)
-                self.run_queue_log(f"Saved JSON: {self.save_dir / f'{safe_pref}.json'}")
-
-            if self.do_csv:
-                export_csv(all_data, self.save_dir, safe_pref)
-                self.run_queue_log(f"Saved CSV: {self.save_dir / f'{safe_pref}.csv'}")
-
-            if self.do_mpc:
-                export_mpc(all_data, self.save_dir, safe_pref)
-                self.run_queue_log(f"Saved Decklist Textfile: {self.save_dir / f'{safe_pref}_decklist.txt'}")
-
-            if self.do_img:
-                export_images(all_data, self.save_dir, safe_pref, self.run_log_callback, self.run_set_progress, start_prog=50.0, end_prog=100.0)
-            else:
-                self.run_set_progress(100.0)
-
-            self.run_queue_log("=== ALL TASKS FINISHED SUCCESSFULLY ===")
+            gather_cards(
+                self.save_dir, self.source, self.raw_paste, self.file_path,
+                self.edhrec_cmd, self.format_pref,
+                self.do_json, self.do_csv, self.do_mpc, self.do_img, self.do_pdf,
+                self.run_queue_log, self.run_set_progress
+            )
             self.finished.emit(True)
-
         except Exception as e:
             self.error.emit(str(e))
 
@@ -198,19 +213,30 @@ class MagicGathererApp(QMainWindow):
 
         # ====== SECTION 3: Output Options ======
         self.group_output = QGroupBox("3. Output Options")
-        self.layout_output = QHBoxLayout()
+        self.layout_output = QVBoxLayout()
+        
+        self.layout_output_top = QHBoxLayout()
         self.chk_json = QCheckBox("JSON")
         self.chk_json.setChecked(True)
         self.chk_csv = QCheckBox("CSV")
         self.chk_csv.setChecked(True)
         self.chk_mpc = QCheckBox("Decklist Textfile")
         self.chk_mpc.setChecked(True)
-        self.chk_img = QCheckBox("High-Res Images")
         
-        self.layout_output.addWidget(self.chk_json)
-        self.layout_output.addWidget(self.chk_csv)
-        self.layout_output.addWidget(self.chk_mpc)
-        self.layout_output.addWidget(self.chk_img)
+        self.layout_output_top.addWidget(self.chk_json)
+        self.layout_output_top.addWidget(self.chk_csv)
+        self.layout_output_top.addWidget(self.chk_mpc)
+        self.layout_output.addLayout(self.layout_output_top)
+        
+        self.layout_output_bot = QHBoxLayout()
+        self.chk_img = QCheckBox("High-Res Images")
+        self.chk_img.setChecked(True)
+        self.chk_pdf = QCheckBox("PDF Print Proxies (Requires Images)")
+        self.chk_pdf.setChecked(True)
+        self.layout_output_bot.addWidget(self.chk_img)
+        self.layout_output_bot.addWidget(self.chk_pdf)
+        self.layout_output.addLayout(self.layout_output_bot)
+        
         self.group_output.setLayout(self.layout_output)
         self.layout_main.addWidget(self.group_output)
 
@@ -301,7 +327,7 @@ class MagicGathererApp(QMainWindow):
             save_dir, source, self.text_paste.toPlainText(), self.entry_file.text(),
             self.entry_edhrec.text(), fmt,
             self.chk_json.isChecked(), self.chk_csv.isChecked(),
-            self.chk_mpc.isChecked(), self.chk_img.isChecked()
+            self.chk_mpc.isChecked(), self.chk_img.isChecked(), self.chk_pdf.isChecked()
         )
 
         self.worker.log_msg.connect(self.append_log)
@@ -337,8 +363,74 @@ class MagicGathererApp(QMainWindow):
                     self.entry_file.setText(path)
         event.acceptProposedAction()
 
+def run_tui():
+    import argparse
+    parser = argparse.ArgumentParser(description="MagicGatherer Terminal UI")
+    parser.add_argument("--tui", action="store_true", help="Launch in TUI Mode")
+    parser.add_argument("--source", choices=["paste", "file", "edhrec"], default="edhrec", help="Input source")
+    parser.add_argument("--file", type=str, default="", help="Path to deck file")
+    parser.add_argument("--edhrec", type=str, default="Krenko, Mob Boss", help="EDHREC Commander Name")
+    parser.add_argument("--paste", type=str, default="", help="Raw paste literal")
+    parser.add_argument("--format", choices=["paper", "arena", "mtgo"], default="paper", help="Format filter")
+    parser.add_argument("--no-json", action="store_true", help="Disable JSON export")
+    parser.add_argument("--no-csv", action="store_true", help="Disable CSV export")
+    parser.add_argument("--no-mpc", action="store_true", help="Disable Decklist textfile export")
+    parser.add_argument("--no-img", action="store_true", help="Disable high-res image download")
+    parser.add_argument("--no-pdf", action="store_true", help="Disable 9-card proxy PDF generation")
+    parser.add_argument("--outdir", type=str, default=".", help="Output directory path")
+    args = parser.parse_args()
+
+    # Validate
+    if args.source == "edhrec" and not args.edhrec:
+        print("Error: --edhrec requires a commander name.")
+        sys.exit(1)
+    if args.source == "file" and not args.file:
+        print("Error: --file requires a file path.")
+        sys.exit(1)
+    if args.source == "paste" and not args.paste:
+        print("Error: --paste requires a pasted string.")
+        sys.exit(1)
+
+    save_dir = Path(args.outdir).resolve()
+    
+    from rich.console import Console
+    from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
+    from rich.panel import Panel
+
+    console = Console()
+    console.print(Panel.fit("[bold magenta]MagicGatherer[/bold magenta] [cyan]TUI Edition[/cyan]", border_style="green"))
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        console=console
+    ) as progress:
+        task1 = progress.add_task("[cyan]Gathering Magic...", total=100)
+
+        def log_cb(msg):
+            progress.console.print(f"[dim]{msg}[/dim]")
+        def prog_cb(val):
+            progress.update(task1, completed=val)
+
+        try:
+            gather_cards(
+                save_dir, args.source, args.paste, args.file,
+                args.edhrec, args.format,
+                not args.no_json, not args.no_csv, not args.no_mpc, not args.no_img, not args.no_pdf,
+                log_cb, prog_cb
+            )
+            progress.update(task1, completed=100, description="[bold green]Finished![/bold green]")
+        except Exception as e:
+            progress.console.print(f"[bold red]Error:[/bold red] {e}")
+            sys.exit(1)
+
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = MagicGathererApp()
-    window.show()
-    sys.exit(app.exec())
+    if "--tui" in sys.argv or "-h" in sys.argv or "--help" in sys.argv:
+        run_tui()
+    else:
+        app = QApplication(sys.argv)
+        window = MagicGathererApp()
+        window.show()
+        sys.exit(app.exec())

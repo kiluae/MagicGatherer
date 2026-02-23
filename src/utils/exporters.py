@@ -4,6 +4,7 @@ from pathlib import Path
 import requests
 import csv
 from typing import List, Dict, Any, Callable, Optional
+from PIL import Image
 from src.utils.parsers import sanitize_filename
 
 def export_json(all_data: List[Dict[str, Any]], save_dir: Path, safe_pref: str) -> None:
@@ -89,3 +90,97 @@ def export_images(all_data: List[Dict[str, Any]], save_dir: Path, safe_pref: str
     if progress_callback is not None:
         progress_callback(end_prog)
     log_callback("Image download complete!")
+
+
+def export_pdf(all_data: List[Dict[str, Any]], save_dir: Path, safe_pref: str, log_callback: Callable[[str], None]) -> None:
+    img_dir = save_dir / f"{safe_pref}_images"
+    if not img_dir.exists():
+        log_callback("Error: Image directory not found. Cannot generate PDF.")
+        return
+
+    # Constants for 600 DPI US Letter
+    PAGE_WIDTH = 5100
+    PAGE_HEIGHT = 6600
+    CARD_WIDTH = 1500  # 2.5 inches * 600 dpi
+    CARD_HEIGHT = 2100 # 3.5 inches * 600 dpi
+    
+    # Calculate perfectly centered margins for a 3x3 grid
+    MARGIN_X = (PAGE_WIDTH - (3 * CARD_WIDTH)) // 2
+    MARGIN_Y = (PAGE_HEIGHT - (3 * CARD_HEIGHT)) // 2
+
+    # Flatten out quantities into a massive single list
+    card_files_to_print: List[Path] = []
+    
+    for c in all_data:
+        qty = int(c.get('quantity', 1))
+        
+        # Handle MDFC faces separately if present
+        if 'card_faces' in c and not 'image_uris' in c:
+            base_name = c['name'].split(" // ")[0]
+            for idx, f in enumerate(c['card_faces']):
+                if 'image_uris' in f and f['image_uris']:
+                    suffix = "" if idx == 0 else " (Back)"
+                    face_name = f"{base_name}{suffix}"
+                    # Try both extensions
+                    fp_jpg = img_dir / f"{sanitize_filename(face_name)}.jpg"
+                    fp_png = img_dir / f"{sanitize_filename(face_name)}.png"
+                    if fp_jpg.exists(): card_files_to_print.extend([fp_jpg] * qty)
+                    elif fp_png.exists(): card_files_to_print.extend([fp_png] * qty)
+        else:
+            # Standard single face
+            card_name = c['name'].split(" // ")[0]
+            fp_jpg = img_dir / f"{sanitize_filename(card_name)}.jpg"
+            fp_png = img_dir / f"{sanitize_filename(card_name)}.png"
+            if fp_jpg.exists(): card_files_to_print.extend([fp_jpg] * qty)
+            elif fp_png.exists(): card_files_to_print.extend([fp_png] * qty)
+
+    if not card_files_to_print:
+        log_callback("No downloaded images found to compile into PDF.")
+        return
+
+    log_callback(f"Compiling {len(card_files_to_print)} cards into 3x3 proxy pages...")
+
+    pages = []
+    current_page = Image.new('RGB', (PAGE_WIDTH, PAGE_HEIGHT), (255, 255, 255))
+    x_idx: int = 0
+    y_idx: int = 0
+
+    for fp in card_files_to_print:
+        try:
+            with Image.open(fp) as img:
+                img = img.convert('RGB')
+                img = img.resize((CARD_WIDTH, CARD_HEIGHT), Image.Resampling.LANCZOS)
+                
+                pos_x = MARGIN_X + (x_idx * CARD_WIDTH)
+                pos_y = MARGIN_Y + (y_idx * CARD_HEIGHT)
+                
+                current_page.paste(img, (pos_x, pos_y))
+                
+                x_idx += 1
+                if x_idx >= 3:
+                    x_idx = 0
+                    y_idx += 1
+                    
+                if y_idx >= 3:
+                    pages.append(current_page)
+                    current_page = Image.new('RGB', (PAGE_WIDTH, PAGE_HEIGHT), (255, 255, 255))
+                    x_idx = 0
+                    y_idx = 0
+                    
+        except Exception as e:
+            log_callback(f"Warning: Failed to compile {fp.name} into PDF - {e}")
+
+    # Append the last partial page if it has any cards on it
+    if x_idx > 0 or y_idx > 0:
+        pages.append(current_page)
+
+    if pages:
+        pdf_path = save_dir / f"{safe_pref}_proxies.pdf"
+        pages[0].save(
+            pdf_path, 
+            "PDF", 
+            resolution=600.0, 
+            save_all=True, 
+            append_images=pages[1:]
+        )
+        log_callback(f"Successfully generated PDF Proxies: {pdf_path}")
