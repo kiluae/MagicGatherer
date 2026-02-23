@@ -17,13 +17,13 @@ jobs:
         include:
           - name: Windows
             os: windows-latest
-            artifact: MagicGatherer-Windows.exe
+            artifact: MagicGatherer.exe
           - name: macOS
             os: macos-latest
-            artifact: MagicGatherer-macOS.app.zip
+            artifact: MagicGatherer.app.zip
           - name: Ubuntu
             os: ubuntu-latest
-            artifact: MagicGatherer-Ubuntu
+            artifact: MagicGatherer
 
     steps:
       - name: Checkout Code
@@ -148,10 +148,10 @@ jobs:
           fi
           python3 -m PyInstaller --onefile --windowed --paths . --hidden-import pkgutil $ICON_ARGS --name MagicGatherer src/main.py
       - name: Rename Artifact
-        run: mv dist/MagicGatherer dist/MagicGatherer-Fedora
+        run: mv dist/MagicGatherer dist/MagicGatherer
       - name: Create Release and Upload
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/MagicGatherer-Fedora
+          files: dist/MagicGatherer
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
