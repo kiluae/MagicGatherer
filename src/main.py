@@ -85,7 +85,7 @@ class MagicGathererApp(QMainWindow):
         super().__init__()
         import os
         from PySide6.QtGui import QIcon
-        self.setWindowTitle("MagicGatherer v2.0.1")
+        self.setWindowTitle("MagicGatherer v2.0.1.1")
         
         icon_p = resource_path("icon.png")
         if os.path.exists(icon_p):
@@ -510,7 +510,7 @@ def run_tui():
     from rich.panel import Panel
 
     console = Console()
-    console.print(Panel.fit("[bold magenta]MagicGatherer v2.0.1[/bold magenta] [cyan]TUI Edition[/cyan]", border_style="green"))
+    console.print(Panel.fit("[bold magenta]MagicGatherer v2.0.1.1[/bold magenta] [cyan]TUI Edition[/cyan]", border_style="green"))
 
     with Progress(
         SpinnerColumn(),
