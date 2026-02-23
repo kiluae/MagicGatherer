@@ -44,9 +44,13 @@ def export_images(all_data: List[Dict[str, Any]], save_dir: Path, safe_pref: str
     for c in all_data:
         faces: List[Dict[str, Any]] = []
         if 'image_uris' in c and c['image_uris']:
-            faces.append({"name": c['name'], "uris": c['image_uris']})
-        if 'card_faces' in c: 
-            faces.extend([{"name": f['name'], "uris": f['image_uris']} for f in c['card_faces'] if 'image_uris' in f])
+            faces.append({"name": c['name'].split(" // ")[0], "uris": c['image_uris']})
+        elif 'card_faces' in c: 
+            base_name = c['name'].split(" // ")[0]
+            for idx, f in enumerate(c['card_faces']):
+                if 'image_uris' in f and f['image_uris']:
+                    suffix = "" if idx == 0 else " (Back)"
+                    faces.append({"name": f"{base_name}{suffix}", "uris": f['image_uris']})
         all_faces.extend(faces)
         
     total = len(all_faces)

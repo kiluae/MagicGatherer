@@ -53,9 +53,9 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.os }}" = "macos-latest" ]; then
-            python3 -m PyInstaller --onefile --windowed --hidden-import pkgutil --name MagicGatherer src/main.py
+            python3 -m PyInstaller --onefile --windowed --paths . --hidden-import pkgutil --name MagicGatherer src/main.py
           else
-            pyinstaller --onefile --windowed --hidden-import pkgutil --name MagicGatherer src/main.py
+            pyinstaller --onefile --windowed --paths . --hidden-import pkgutil --name MagicGatherer src/main.py
           fi
       - name: Rename Artifact (Windows)
         if: matrix.name == 'Windows'
@@ -92,7 +92,7 @@ jobs:
           python3 -m pip install -r requirements.txt
           python3 -m pip install pyinstaller
       - name: Build with PyInstaller
-        run: python3 -m PyInstaller --onefile --windowed --hidden-import pkgutil --name MagicGatherer src/main.py
+        run: python3 -m PyInstaller --onefile --windowed --paths . --hidden-import pkgutil --name MagicGatherer src/main.py
       - name: Rename Artifact
         run: mv dist/MagicGatherer dist/MagicGatherer-Fedora
       - name: Create Release and Upload
