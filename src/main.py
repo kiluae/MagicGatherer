@@ -7,7 +7,8 @@ from typing import Dict, Any, Callable
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QGroupBox, QRadioButton, QTextEdit, QLineEdit, QPushButton,
-    QCheckBox, QLabel, QProgressBar, QFileDialog, QMessageBox
+    QCheckBox, QLabel, QProgressBar, QFileDialog, QMessageBox,
+    QSpinBox
 )
 from PySide6.QtCore import Qt, QThread, Signal
 
@@ -30,7 +31,8 @@ def resource_path(relative_path: str) -> str:
 def gather_cards(save_dir: Path, source: str, raw_paste: str, file_path: str,
                  edhrec_cmd: str, format_pref: str,
                  do_json: bool, do_csv: bool, do_mpc: bool, do_img: bool, do_pdf: bool,
-                 log_cb: Callable[[str], None], progress_cb: Callable[[float], None]) -> None:
+                 log_cb: Callable[[str], None], progress_cb: Callable[[float], None],
+                 pdf_padding: int = 75) -> None:
     deck_dict: Dict[str, Dict[str, Any]] = {}
     output_prefix = "deck"
 
@@ -88,7 +90,7 @@ def gather_cards(save_dir: Path, source: str, raw_paste: str, file_path: str,
     if do_img:
         export_images(all_data, save_dir, safe_pref, log_cb, progress_cb, start_prog=50.0, end_prog=90.0)
         if do_pdf:
-            export_pdf(all_data, save_dir, safe_pref, log_cb)
+            export_pdf(all_data, save_dir, safe_pref, log_cb, padding_px=pdf_padding)
             progress_cb(100.0)
         else:
             progress_cb(100.0)
@@ -106,7 +108,8 @@ class GatherWorker(QThread):
 
     def __init__(self, save_dir: Path, source: str, raw_paste: str, file_path: str,
                  edhrec_cmd: str, format_pref: str,
-                 do_json: bool, do_csv: bool, do_mpc: bool, do_img: bool, do_pdf: bool):
+                 do_json: bool, do_csv: bool, do_mpc: bool, do_img: bool, do_pdf: bool,
+                 pdf_padding: int = 75):
         super().__init__()
         self.save_dir = save_dir
         self.source = source
@@ -119,6 +122,7 @@ class GatherWorker(QThread):
         self.do_mpc = do_mpc
         self.do_img = do_img
         self.do_pdf = do_pdf
+        self.pdf_padding = pdf_padding
 
     def run_queue_log(self, msg: str):
         self.log_msg.emit(msg)
@@ -132,7 +136,7 @@ class GatherWorker(QThread):
                 self.save_dir, self.source, self.raw_paste, self.file_path,
                 self.edhrec_cmd, self.format_pref,
                 self.do_json, self.do_csv, self.do_mpc, self.do_img, self.do_pdf,
-                self.run_queue_log, self.run_set_progress
+                self.run_queue_log, self.run_set_progress, self.pdf_padding
             )
             self.finished.emit(True)
         except Exception as e:
@@ -231,10 +235,18 @@ class MagicGathererApp(QMainWindow):
         self.layout_output_bot = QHBoxLayout()
         self.chk_img = QCheckBox("High-Res Images")
         self.chk_img.setChecked(True)
-        self.chk_pdf = QCheckBox("PDF Print Proxies (Requires Images)")
+        self.chk_pdf = QCheckBox("PDF Print Proxies")
         self.chk_pdf.setChecked(True)
+        
+        self.spin_pdf_pad = QSpinBox()
+        self.spin_pdf_pad.setRange(0, 300)
+        self.spin_pdf_pad.setValue(75)
+        self.spin_pdf_pad.setSuffix(" px padding")
+        self.spin_pdf_pad.setToolTip("Adds mechanical cutting space around each PDF grid proxy.")
+        
         self.layout_output_bot.addWidget(self.chk_img)
         self.layout_output_bot.addWidget(self.chk_pdf)
+        self.layout_output_bot.addWidget(self.spin_pdf_pad)
         self.layout_output.addLayout(self.layout_output_bot)
         
         self.group_output.setLayout(self.layout_output)
@@ -327,7 +339,8 @@ class MagicGathererApp(QMainWindow):
             save_dir, source, self.text_paste.toPlainText(), self.entry_file.text(),
             self.entry_edhrec.text(), fmt,
             self.chk_json.isChecked(), self.chk_csv.isChecked(),
-            self.chk_mpc.isChecked(), self.chk_img.isChecked(), self.chk_pdf.isChecked()
+            self.chk_mpc.isChecked(), self.chk_img.isChecked(), self.chk_pdf.isChecked(),
+            self.spin_pdf_pad.value()
         )
 
         self.worker.log_msg.connect(self.append_log)
@@ -377,6 +390,7 @@ def run_tui():
     parser.add_argument("--no-mpc", action="store_true", help="Disable Decklist textfile export")
     parser.add_argument("--no-img", action="store_true", help="Disable high-res image download")
     parser.add_argument("--no-pdf", action="store_true", help="Disable 9-card proxy PDF generation")
+    parser.add_argument("--pdf-padding", type=int, default=75, help="PDF proxy border cutting space in pixels (Default: 75 px)")
     parser.add_argument("--outdir", type=str, default=".", help="Output directory path")
     args = parser.parse_args()
 
@@ -419,7 +433,7 @@ def run_tui():
                 save_dir, args.source, args.paste, args.file,
                 args.edhrec, args.format,
                 not args.no_json, not args.no_csv, not args.no_mpc, not args.no_img, not args.no_pdf,
-                log_cb, prog_cb
+                log_cb, prog_cb, args.pdf_padding
             )
             progress.update(task1, completed=100, description="[bold green]Finished![/bold green]")
         except Exception as e:
@@ -427,7 +441,14 @@ def run_tui():
             sys.exit(1)
 
 if __name__ == "__main__":
-    if "--tui" in sys.argv or "-h" in sys.argv or "--help" in sys.argv:
+    if len(sys.argv) == 2 and "--tui" in sys.argv:
+        try:
+            from src.tui.app import MagicGathererTUI
+            app_tui = MagicGathererTUI()
+            app_tui.run()
+        except ImportError:
+            run_tui()
+    elif "--tui" in sys.argv or "-h" in sys.argv or "--help" in sys.argv:
         run_tui()
     else:
         app = QApplication(sys.argv)

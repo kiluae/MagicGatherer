@@ -13,7 +13,7 @@ Thus, **MagicGatherer** was born. It started as a personal script to bypass Aren
 
 ## Features
 - **High-Res PNG Downloads:** Scrape the absolute highest quality scans for MPC or home printing.
-- **Instant Tabletop Proxies:** Automatically compile downloaded card art directly into perfect 3x3 600 DPI `_proxies.pdf` grids formatted flawlessly for standard US Letter cutouts.
+- **Instant Tabletop Proxies:** Automatically compile downloaded card art directly into perfect 3x3 600 DPI `_proxies.pdf` grids formatted flawlessly for standard US Letter cutouts. Features a customizable 1/8th-inch physical printing bleed mathematically configurable down to the pixel to prevent scissor-clipping edges.
 - **EDHREC Integration:** Automatically pull average composite lists by directly querying commander names with intelligent fuzzy-search Typos correction natively mapping to Scryfall.
 - **Digital Client Filtering:** Guarantee client-legal output utilizing a persistent API fetching backend perfectly integrated for MTG Arena and MTGO lists, seamlessly routing specific digital card availability.
 - **Clean Output Pipelines:** Export localized CSV spreadsheets, JSON dictionaries, or raw _Decklist Textfiles_ tailored for broad ingestion.
@@ -36,11 +36,15 @@ You do not need to install Python! Simply navigate to the [Releases](../../relea
 4. Click **Gather your Magic** and choose a folder!
 
 ### Headless Terminal Edition (TUI)
-You can entirely bypass the UI and leverage standard terminal commands powered by a gorgeous glowing rendering engine:
+You can entirely bypass the UI and leverage standard terminal commands powered by a gorgeous persistent dashboard Textual engine:
 ```bash
-./MagicGatherer --tui --source edhrec --edhrec "Krenko, Mob Boss" --format mtgo
+./MagicGatherer --tui
 ```
-Available flags: `--tui`, `--source <paste|file|edhrec>`, `--file <path>`, `--edhrec <cmd>`, `--format <paper|arena|mtgo>`, `--no-json`, `--no-csv`, `--no-mpc`, `--no-img`, `--no-pdf`, `--outdir <path>`.
+Or use the CLI explicitly for pipeline injections:
+```bash
+./MagicGatherer --source edhrec --edhrec "Krenko, Mob Boss" --format mtgo --pdf-padding 125
+```
+Available flags: `--tui`, `--source <paste|file|edhrec>`, `--file <path>`, `--edhrec <cmd>`, `--format <paper|arena|mtgo>`, `--no-json`, `--no-csv`, `--no-mpc`, `--no-img`, `--no-pdf`, `--pdf-padding <px>`, `--outdir <path>`.
 
 ## Use Cases
 * **High-Fidelity Proxying:** Generate high-resolution PNG sets specifically for **MPCFill**, third-party proxy sites, or high-quality home printing.
