@@ -1,6 +1,8 @@
 import sys
 import threading
 import time
+import subprocess
+import platform
 from pathlib import Path
 from typing import Dict, Any, Callable
 
@@ -281,10 +283,16 @@ class MagicGathererApp(QMainWindow):
         self.btn_clear_cache.setMaximumWidth(80)
         self.btn_clear_cache.clicked.connect(self.clear_cache)
         
+        self.btn_launch_tui = QPushButton("Launch TUI")
+        self.btn_launch_tui.setStyleSheet("font-size: 10px; color: gray;")
+        self.btn_launch_tui.setMaximumWidth(80)
+        self.btn_launch_tui.clicked.connect(self.launch_tui)
+        
         self.lbl_brand = QLabel("by yuhidev")
         self.lbl_brand.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.lbl_brand.setStyleSheet("font-size: 10px;")
         
+        self.layout_bottom.addWidget(self.btn_launch_tui)
         self.layout_bottom.addWidget(self.btn_clear_cache)
         self.layout_bottom.addWidget(self.lbl_brand)
         self.layout_main.addLayout(self.layout_bottom)
@@ -300,6 +308,17 @@ class MagicGathererApp(QMainWindow):
                 QMessageBox.warning(self, "Error", f"Failed to clear cache: {e}")
         else:
             QMessageBox.information(self, "Cache Cleared", "Cache is already empty!")
+
+    def launch_tui(self):
+        """ Spawn the TUI in a new terminal and close the GUI """
+        if platform.system() == "Windows":
+            subprocess.Popen("start cmd /c MagicGatherer.exe --tui", shell=True)
+        elif platform.system() == "Darwin": # macOS
+            subprocess.Popen(["open", "-a", "Terminal", sys.executable, __file__, "--tui"])
+        else: # Linux
+            subprocess.Popen(["x-terminal-emulator", "-e", f"{sys.executable} {__file__} --tui"])
+            
+        self.close()
 
     def toggle_inputs(self):
         self.text_paste.setEnabled(self.radio_paste.isChecked())
