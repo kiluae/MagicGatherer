@@ -92,7 +92,7 @@ def export_images(all_data: List[Dict[str, Any]], save_dir: Path, safe_pref: str
     log_callback("Image download complete!")
 
 
-def export_pdf(all_data: List[Dict[str, Any]], save_dir: Path, safe_pref: str, log_callback: Callable[[str], None]) -> None:
+def export_pdf(all_data: List[Dict[str, Any]], save_dir: Path, safe_pref: str, log_callback: Callable[[str], None], padding_px: int = 75) -> None:
     img_dir = save_dir / f"{safe_pref}_images"
     if not img_dir.exists():
         log_callback("Error: Image directory not found. Cannot generate PDF.")
@@ -104,9 +104,20 @@ def export_pdf(all_data: List[Dict[str, Any]], save_dir: Path, safe_pref: str, l
     CARD_WIDTH = 1500  # 2.5 inches * 600 dpi
     CARD_HEIGHT = 2100 # 3.5 inches * 600 dpi
     
-    # Calculate perfectly centered margins for a 3x3 grid
-    MARGIN_X = (PAGE_WIDTH - (3 * CARD_WIDTH)) // 2
-    MARGIN_Y = (PAGE_HEIGHT - (3 * CARD_HEIGHT)) // 2
+    # Calculate perfectly centered margins for a 3x3 grid including padding space
+    TOTAL_GRID_WIDTH: int = int((3 * CARD_WIDTH) + (2 * padding_px))
+    TOTAL_GRID_HEIGHT: int = int((3 * CARD_HEIGHT) + (2 * padding_px))
+    
+    # If the user sets massive padding causing bleed over the physical page, clamp it logically to nearest fit
+    if TOTAL_GRID_WIDTH > PAGE_WIDTH:
+        padding_px = int((PAGE_WIDTH - (3 * CARD_WIDTH)) // 3)
+        TOTAL_GRID_WIDTH = int((3 * CARD_WIDTH) + (2 * padding_px))
+    if TOTAL_GRID_HEIGHT > PAGE_HEIGHT:
+        padding_px = int((PAGE_HEIGHT - (3 * CARD_HEIGHT)) // 3)
+        TOTAL_GRID_HEIGHT = int((3 * CARD_HEIGHT) + (2 * padding_px))
+
+    MARGIN_X: int = int((PAGE_WIDTH - TOTAL_GRID_WIDTH) // 2)
+    MARGIN_Y: int = int((PAGE_HEIGHT - TOTAL_GRID_HEIGHT) // 2)
 
     # Flatten out quantities into a massive single list
     card_files_to_print: List[Path] = []
@@ -151,8 +162,8 @@ def export_pdf(all_data: List[Dict[str, Any]], save_dir: Path, safe_pref: str, l
                 img = img.convert('RGB')
                 img = img.resize((CARD_WIDTH, CARD_HEIGHT), Image.Resampling.LANCZOS)
                 
-                pos_x = MARGIN_X + (x_idx * CARD_WIDTH)
-                pos_y = MARGIN_Y + (y_idx * CARD_HEIGHT)
+                pos_x: int = int(MARGIN_X + (x_idx * (CARD_WIDTH + padding_px)))
+                pos_y: int = int(MARGIN_Y + (y_idx * (CARD_HEIGHT + padding_px)))
                 
                 current_page.paste(img, (pos_x, pos_y))
                 
