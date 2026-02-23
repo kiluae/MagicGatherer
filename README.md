@@ -36,10 +36,18 @@ You do not need to install Python! Simply navigate to the [Releases](../../relea
 4. Click **Gather your Magic** and choose a folder!
 
 ### Headless Terminal Edition (TUI)
-You can entirely bypass the UI and leverage standard terminal commands powered by a gorgeous persistent dashboard Textual engine:
+You can entirely bypass the UI and leverage standard terminal commands powered by a gorgeous persistent dashboard Textual engine.
+
+**For macOS / Linux Users:**
 ```bash
 ./MagicGatherer --tui
 ```
+**For Windows Users:**
+Simply double-click the included `Launch TUI.bat` file! Alternatively, open Command Prompt or PowerShell in the folder and type:
+```cmd
+MagicGatherer.exe --tui
+```
+
 Or use the CLI explicitly for pipeline injections:
 ```bash
 ./MagicGatherer --source edhrec --edhrec "Krenko, Mob Boss" --format mtgo --pdf-padding 125
