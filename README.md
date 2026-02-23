@@ -13,11 +13,13 @@ Thus, **MagicGatherer** was born. It started as a personal script to bypass Aren
 
 ## Features
 - **High-Res PNG Downloads:** Scrape the absolute highest quality scans for MPC or home printing.
-- **EDHREC Integration:** Automatically pull average composite lists by directly querying commander names.
+- **Instant Tabletop Proxies:** Automatically compile downloaded card art directly into perfect 3x3 600 DPI `_proxies.pdf` grids formatted flawlessly for standard US Letter cutouts.
+- **EDHREC Integration:** Automatically pull average composite lists by directly querying commander names with intelligent fuzzy-search Typos correction natively mapping to Scryfall.
 - **Digital Client Filtering:** Guarantee client-legal output utilizing a persistent API fetching backend perfectly integrated for MTG Arena and MTGO lists, seamlessly routing specific digital card availability.
 - **Clean Output Pipelines:** Export localized CSV spreadsheets, JSON dictionaries, or raw _Decklist Textfiles_ tailored for broad ingestion.
 
 ## What's New
+- **Beautiful Headless TUI:** Run `MagicGatherer --tui` directly in your terminal to instantly ditch the GUI for a breathtaking, highly responsive `rich`-powered Terminal User Interface, unlocking fast pipeline integration with zero app bloat.
 - **PySide6 Foundation:** Completely rewritten UI architecture utilizing the official Qt for Python bindings (PySide6) to guarantee absolutely flawless executable stability across Windows, macOS, and Linux without missing dynamic libraries.
 - **Modal Double-Faced Cards (MDFC) Support:** High-resolution image scraping now automatically identifies dual-sided cards, intelligently downloading the back face dynamically alongside the front face (e.g., `CardName.png` & `CardName (Back).png`).
 - **Smart OS Caching:** Blazing fast repeat queries via automated JSON caching securely nested in your home directory (`~/.magicgatherer/cache`)—immune to macOS Application Bundle read-only crashes.
@@ -27,10 +29,18 @@ Thus, **MagicGatherer** was born. It started as a personal script to bypass Aren
 ## How to Use
 You do not need to install Python! Simply navigate to the [Releases](../../releases) tab and download the pre-compiled executable tailored for your operating system (Windows, macOS, or Linux). 
 
+### Desktop GUI
 1. Launch the executable (`MagicGatherer`).
 2. Select your Input format (Paste your deck, Browse for a `.txt`, or query an EDHREC Commander).
 3. Select your Format (Paper/Arena/MTGO) and Output options.
 4. Click **Gather your Magic** and choose a folder!
+
+### Headless Terminal Edition (TUI)
+You can entirely bypass the UI and leverage standard terminal commands powered by a gorgeous glowing rendering engine:
+```bash
+./MagicGatherer --tui --source edhrec --edhrec "Krenko, Mob Boss" --format mtgo
+```
+Available flags: `--tui`, `--source <paste|file|edhrec>`, `--file <path>`, `--edhrec <cmd>`, `--format <paper|arena|mtgo>`, `--no-json`, `--no-csv`, `--no-mpc`, `--no-img`, `--no-pdf`, `--outdir <path>`.
 
 ## Use Cases
 * **High-Fidelity Proxying:** Generate high-resolution PNG sets specifically for **MPCFill**, third-party proxy sites, or high-quality home printing.
