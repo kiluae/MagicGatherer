@@ -20,7 +20,7 @@ def gather_cards(save_dir: Path, source: str, raw_paste: str, file_path: str,
                  do_json: bool, do_csv: bool, do_mpc: bool, do_img: bool, do_pdf: bool,
                  log_cb: Callable[[str], None], progress_cb: Callable[[float], None],
                  pdf_padding: int = 75, skip_cb: Callable[[str], None] = None,
-                 draw_guides: bool = False) -> None:
+                 draw_guides: bool = False, paper_size: str = "Letter") -> None:
     deck_dict: Dict[str, Dict[str, Any]] = {}
     output_prefix = "deck"
 
@@ -81,7 +81,7 @@ def gather_cards(save_dir: Path, source: str, raw_paste: str, file_path: str,
     if do_img:
         export_images(all_data, save_dir, safe_pref, log_cb, progress_cb, start_prog=50.0, end_prog=90.0)
         if do_pdf:
-            export_pdf(all_data, save_dir, safe_pref, log_cb, padding_px=pdf_padding, draw_guides=draw_guides)
+            export_pdf(all_data, save_dir, safe_pref, log_cb, padding_px=pdf_padding, draw_guides=draw_guides, paper_size=paper_size)
             progress_cb(100.0)
         else:
             progress_cb(100.0)

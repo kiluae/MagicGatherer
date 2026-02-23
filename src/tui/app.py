@@ -3,9 +3,15 @@ import os
 from typing import Optional
 from textual.app import App, ComposeResult
 from textual.containers import Grid, Horizontal, Vertical
-from textual.widgets import Header, Footer, Input, RadioSet, RadioButton, Checkbox, Button, Log, Static
+from textual.widgets import Header, Footer, Input, RadioSet, RadioButton, Checkbox, Button, Log, Static, Select
 from textual import work
 import sys
+
+# Ensure the root project directory is in the Python path so `python3 src/tui/app.py` works
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
 
 # We need to import gather_cards safely from src.logic
 from src.logic import gather_cards
@@ -112,12 +118,51 @@ class MagicGathererTUI(App):
                             yield Checkbox("PDF Proxy", id="chk_pdf", value=True)
                             yield Checkbox("Crop Marks", id="chk_guides", value=True)
                             yield Checkbox("Open Folder", id="chk_open_folder", value=True)
+                            yield Select(
+                                [
+                                    ("US Letter", "Letter"),
+                                    ("US Legal", "Legal"),
+                                    ("US Tabloid", "Tabloid"),
+                                    ("A4", "A4"),
+                                    ("A3", "A3"),
+                                    ("A2", "A2"),
+                                    ("A1", "A1")
+                                ],
+                                prompt="Paper Size",
+                                id="sel_paper",
+                                value="Letter"
+                            )
+                            yield Select(
+                                [("No Padding (0 px)", "0"), ("Standard Proxy Padding (75 px)", "75"), ("Large Padding (150 px)", "150")],
+                                prompt="PDF Padding",
+                                id="sel_padding",
+                                value="75"
+                            )
                 
                 yield Input(placeholder="./ (Output Dir)", id="outdir_input", value=".")
                 yield Button("Gather your Magic", id="btn_gather", variant="success")
                 yield Log(id="gather_log", highlight=True)
 
         yield Footer()
+
+    def toggle_pdf_options(self) -> None:
+        try:
+            img_chk = self.query_one("#chk_img", Checkbox)
+            pdf_chk = self.query_one("#chk_pdf", Checkbox)
+            show = img_chk.value and pdf_chk.value
+            
+            self.query_one("#sel_paper", Select).display = show
+            self.query_one("#sel_padding", Select).display = show
+            self.query_one("#chk_guides", Checkbox).display = show
+        except Exception:
+            pass
+
+    def on_mount(self) -> None:
+        self.toggle_pdf_options()
+
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        if event.checkbox.id in ["chk_img", "chk_pdf"]:
+            self.toggle_pdf_options()
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn_gather":
@@ -143,6 +188,9 @@ class MagicGathererTUI(App):
         do_pdf = self.query_one("#chk_pdf", Checkbox).value
         do_guides = self.query_one("#chk_guides", Checkbox).value
         do_open = self.query_one("#chk_open_folder", Checkbox).value
+        
+        paper_size = self.query_one("#sel_paper", Select).value
+        pad_val = int(self.query_one("#sel_padding", Select).value)
 
         # Map source
         source_map = {"src_edhrec": "edhrec", "src_file": "file", "src_paste": "paste"}
@@ -176,8 +224,10 @@ class MagicGathererTUI(App):
                 edhrec_cmd, fmt_val,
                 do_json, do_csv, do_mpc, do_img, do_pdf,
                 log_cb, progress_cb,
+                pdf_padding=pad_val,
                 skip_cb=lambda m: log_cb(f"[red]Skipped: {m}[/red]"),
-                draw_guides=do_guides
+                draw_guides=do_guides,
+                paper_size=paper_size
             )
             
             if do_open:

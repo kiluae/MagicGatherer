@@ -92,15 +92,29 @@ def export_images(all_data: List[Dict[str, Any]], save_dir: Path, safe_pref: str
     log_callback("Image download complete!")
 
 
-def export_pdf(all_data: List[Dict[str, Any]], save_dir: Path, safe_pref: str, log_callback: Callable[[str], None], padding_px: int = 75, draw_guides: bool = False) -> None:
+def export_pdf(all_data: List[Dict[str, Any]], save_dir: Path, safe_pref: str, log_callback: Callable[[str], None], padding_px: int = 75, draw_guides: bool = False, paper_size: str = "Letter") -> None:
     img_dir = save_dir / f"{safe_pref}_images"
     if not img_dir.exists():
         log_callback("Error: Image directory not found. Cannot generate PDF.")
         return
 
-    # Constants for 600 DPI US Letter
-    PAGE_WIDTH = 5100
-    PAGE_HEIGHT = 6600
+    # Constants for 600 DPI
+    paper_dimensions = {
+        "Letter": (5100, 6600),
+        "Legal": (5100, 8400),
+        "Tabloid": (6600, 10200),
+        "A4": (4960, 7016),
+        "A3": (7016, 9921),
+        "A2": (9921, 14031),
+        "A1": (14031, 19866)
+    }
+    
+    if paper_size not in paper_dimensions:
+        log_callback(f"Warning: Unknown paper size '{paper_size}', defaulting to Letter.")
+        PAGE_WIDTH, PAGE_HEIGHT = paper_dimensions["Letter"]
+    else:
+        PAGE_WIDTH, PAGE_HEIGHT = paper_dimensions[paper_size]
+        
     CARD_WIDTH = 1500  # 2.5 inches * 600 dpi
     CARD_HEIGHT = 2100 # 3.5 inches * 600 dpi
     

@@ -3,6 +3,7 @@ import threading
 import time
 import subprocess
 import platform
+import copy
 from pathlib import Path
 from typing import Dict, Any, Callable
 
@@ -10,12 +11,19 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QGroupBox, QRadioButton, QTextEdit, QLineEdit, QPushButton,
     QCheckBox, QLabel, QProgressBar, QFileDialog, QMessageBox,
-    QSpinBox
+    QComboBox
 )
 from PySide6.QtCore import Qt, QThread, Signal, QUrl
 from PySide6.QtGui import QDesktopServices
 import json
 import os
+
+# Ensure the root project directory is in the Python path so `python3 src/main.py` works
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+
 from src.logic import resource_path, gather_cards
 
 # Logic moved to src/logic.py
@@ -31,7 +39,7 @@ class GatherWorker(QThread):
     def __init__(self, save_dir: Path, source: str, raw_paste: str, file_path: str,
                  edhrec_cmd: str, format_pref: str,
                  do_json: bool, do_csv: bool, do_mpc: bool, do_img: bool, do_pdf: bool,
-                 pdf_padding: int = 75, draw_guides: bool = False):
+                 pdf_padding: int = 75, draw_guides: bool = False, paper_size: str = "Letter"):
         super().__init__()
         self.save_dir = save_dir
         self.source = source
@@ -46,6 +54,7 @@ class GatherWorker(QThread):
         self.do_pdf = do_pdf
         self.pdf_padding = pdf_padding
         self.draw_guides = draw_guides
+        self.paper_size = paper_size
 
     def run_queue_log(self, msg: str):
         self.log_msg.emit(msg)
@@ -63,7 +72,8 @@ class GatherWorker(QThread):
                 self.edhrec_cmd, self.format_pref,
                 self.do_json, self.do_csv, self.do_mpc, self.do_img, self.do_pdf,
                 self.run_queue_log, self.run_set_progress, self.pdf_padding,
-                skip_cb=self.run_queue_skipped, draw_guides=self.draw_guides
+                skip_cb=self.run_queue_skipped, draw_guides=self.draw_guides,
+                paper_size=self.paper_size
             )
             self.finished.emit(True)
         except Exception as e:
@@ -75,7 +85,7 @@ class MagicGathererApp(QMainWindow):
         super().__init__()
         import os
         from PySide6.QtGui import QIcon
-        self.setWindowTitle("MagicGatherer")
+        self.setWindowTitle("MagicGatherer v2.0.1")
         
         icon_p = resource_path("icon.png")
         if os.path.exists(icon_p):
@@ -169,22 +179,33 @@ class MagicGathererApp(QMainWindow):
         self.chk_guides = QCheckBox("Print Cut Guides")
         self.chk_guides.setChecked(True)
         
+        self.group_paper_size = QGroupBox("Paper Size")
+        self.layout_paper_size = QHBoxLayout()
+        self.combo_paper_size = QComboBox()
+        self.combo_paper_size.addItems(["US Letter", "US Legal", "US Tabloid", "A4", "A3", "A2", "A1"])
+        self.combo_paper_size.setCurrentText("US Letter")
+        self.layout_paper_size.addWidget(self.combo_paper_size)
+        self.group_paper_size.setLayout(self.layout_paper_size)
+        
         self.chk_open_folder = QCheckBox("Open Output Folder")
         self.chk_open_folder.setChecked(True)
         
-        self.spin_pdf_pad = QSpinBox()
-        self.spin_pdf_pad.setRange(0, 300)
-        self.spin_pdf_pad.setValue(75)
-        self.spin_pdf_pad.setSuffix(" px padding")
-        self.spin_pdf_pad.setToolTip("Adds mechanical cutting space around each PDF grid proxy.")
+        self.combo_pdf_pad = QComboBox()
+        self.combo_pdf_pad.addItems(["No Padding (0 px)", "Standard Proxy Padding (75 px)", "Large Padding (150 px)"])
+        self.combo_pdf_pad.setCurrentText("Standard Proxy Padding (75 px)")
+        self.combo_pdf_pad.setToolTip("Adds mechanical cutting space around each PDF grid proxy.")
         
         self.layout_output_bot.addWidget(self.chk_img)
         self.layout_output_bot.addWidget(self.chk_pdf)
         self.layout_output_bot.addWidget(self.chk_guides)
         self.layout_output_bot.addWidget(self.chk_open_folder)
-        self.layout_output_bot.addWidget(self.spin_pdf_pad)
+        self.layout_output_bot.addWidget(self.combo_pdf_pad)
+        self.layout_output_bot.addWidget(self.group_paper_size)
         self.layout_output.addLayout(self.layout_output_bot)
         
+        self.chk_img.toggled.connect(self.toggle_pdf_options)
+        self.chk_pdf.toggled.connect(self.toggle_pdf_options)
+
         self.group_output.setLayout(self.layout_output)
         self.layout_main.addWidget(self.group_output)
 
@@ -256,27 +277,48 @@ class MagicGathererApp(QMainWindow):
         else:
             QMessageBox.information(self, "Cache Cleared", "Cache is already empty!")
 
+    def toggle_pdf_options(self):
+        show = self.chk_img.isChecked() and self.chk_pdf.isChecked()
+        self.group_paper_size.setVisible(show)
+        self.combo_pdf_pad.setVisible(show)
+        self.chk_guides.setVisible(show)
+
     def launch_tui(self):
         """ Spawn the TUI in a new terminal and close the GUI """
+        env = copy.deepcopy(os.environ)
+        env.pop('_MEIPASS2', None)
+        
         if getattr(sys, 'frozen', False):
             # Compiled (PyInstaller) mode
             exe = sys.executable
             if platform.system() == "Windows":
-                subprocess.Popen(f'start cmd /c "{exe}" --tui', shell=True)
+                subprocess.Popen(f'start cmd /c "{exe}" --tui', shell=True, env=env)
             elif platform.system() == "Darwin":
-                subprocess.Popen(["open", "-a", "Terminal", exe, "--args", "--tui"])
+                script = f'''
+                tell application "Terminal"
+                    do script "\\"{exe}\\" --tui"
+                    activate
+                end tell
+                '''
+                subprocess.Popen(["osascript", "-e", script], env=env)
             else:
-                subprocess.Popen(["x-terminal-emulator", "-e", f'"{exe}" --tui'])
+                subprocess.Popen(["x-terminal-emulator", "-e", f'"{exe}" --tui'], env=env)
         else:
             # Development mode
             python = sys.executable
-            script = __file__
+            script_path = __file__
             if platform.system() == "Windows":
-                subprocess.Popen(f'start cmd /c "{python}" "{script}" --tui', shell=True)
+                subprocess.Popen(f'start cmd /c "{python}" "{script_path}" --tui', shell=True, env=env)
             elif platform.system() == "Darwin":
-                subprocess.Popen(["open", "-a", "Terminal", python, "--args", script, "--tui"])
+                script = f'''
+                tell application "Terminal"
+                    do script "\\"{python}\\" \\"{script_path}\\" --tui"
+                    activate
+                end tell
+                '''
+                subprocess.Popen(["osascript", "-e", script], env=env)
             else:
-                subprocess.Popen(["x-terminal-emulator", "-e", f'"{python}" "{script}" --tui'])
+                subprocess.Popen(["x-terminal-emulator", "-e", f'"{python}" "{script_path}" --tui'], env=env)
             
         self.close()
 
@@ -314,12 +356,24 @@ class MagicGathererApp(QMainWindow):
         self.text_log.clear()
         self.skipped_area.clear()
         
+        raw_paper = self.combo_paper_size.currentText()
+        if raw_paper == "US Letter": paper_size = "Letter"
+        elif raw_paper == "US Legal": paper_size = "Legal"
+        elif raw_paper == "US Tabloid": paper_size = "Tabloid"
+        else: paper_size = raw_paper  # A4, A3, etc.
+        
+        # Parse padding string back to int
+        pad_text = self.combo_pdf_pad.currentText()
+        pad_val = 0
+        if "75" in pad_text: pad_val = 75
+        elif "150" in pad_text: pad_val = 150
+        
         self.worker = GatherWorker(
             save_dir, source, self.text_paste.toPlainText(), self.entry_file.text(),
             self.entry_edhrec.text(), fmt_pref,
             self.chk_json.isChecked(), self.chk_csv.isChecked(), self.chk_mpc.isChecked(),
             self.chk_img.isChecked(), self.chk_pdf.isChecked(),
-            self.spin_pdf_pad.value(), self.chk_guides.isChecked()
+            pad_val, self.chk_guides.isChecked(), paper_size
         )
         self.worker.log_msg.connect(self.append_log)
         self.worker.skipped_msg.connect(self.skipped_area.append)
@@ -351,13 +405,24 @@ class MagicGathererApp(QMainWindow):
                 self.chk_pdf.setChecked(c.get("pdf", True))
                 self.chk_guides.setChecked(c.get("guides", True))
                 self.chk_open_folder.setChecked(c.get("open_folder", True))
-                self.spin_pdf_pad.setValue(c.get("padding", 75))
+                pad_val = c.get("padding", 75)
+                if pad_val == 0: self.combo_pdf_pad.setCurrentText("No Padding (0 px)")
+                elif pad_val == 150: self.combo_pdf_pad.setCurrentText("Large Padding (150 px)")
+                else: self.combo_pdf_pad.setCurrentText("Standard Proxy Padding (75 px)")
+                
+                p_size = c.get("paper_size", "Letter")
+                if p_size == "Legal": self.combo_paper_size.setCurrentText("US Legal")
+                elif p_size == "Tabloid": self.combo_paper_size.setCurrentText("US Tabloid")
+                elif p_size in ["A4", "A3", "A2", "A1"]: self.combo_paper_size.setCurrentText(p_size)
+                else: self.combo_paper_size.setCurrentText("US Letter")
                 
                 f_pref = c.get("format", "paper")
                 if f_pref == "arena": self.radio_arena.setChecked(True)
                 elif f_pref == "mtgo": self.radio_mtgo.setChecked(True)
                 else: self.radio_paper.setChecked(True)
-        except:
+                
+                self.toggle_pdf_options()
+        except Exception:
             pass
 
     def save_config(self):
@@ -366,6 +431,17 @@ class MagicGathererApp(QMainWindow):
         if self.radio_arena.isChecked(): f_pref = "arena"
         elif self.radio_mtgo.isChecked(): f_pref = "mtgo"
         
+        pad_text = self.combo_pdf_pad.currentText()
+        pad_val = 0
+        if "75" in pad_text: pad_val = 75
+        elif "150" in pad_text: pad_val = 150
+
+        raw_paper = self.combo_paper_size.currentText()
+        if raw_paper == "US Letter": p_size = "Letter"
+        elif raw_paper == "US Legal": p_size = "Legal"
+        elif raw_paper == "US Tabloid": p_size = "Tabloid"
+        else: p_size = raw_paper
+
         c = {
             "json": self.chk_json.isChecked(),
             "csv": self.chk_csv.isChecked(),
@@ -374,8 +450,9 @@ class MagicGathererApp(QMainWindow):
             "pdf": self.chk_pdf.isChecked(),
             "guides": self.chk_guides.isChecked(),
             "open_folder": self.chk_open_folder.isChecked(),
-            "padding": self.spin_pdf_pad.value(),
-            "format": f_pref
+            "padding": pad_val,
+            "format": f_pref,
+            "paper_size": p_size
         }
         with open(self.config_path, "w") as f:
             json.dump(c, f)
@@ -411,6 +488,7 @@ def run_tui():
     parser.add_argument("--no-pdf", action="store_true", help="Disable 9-card proxy PDF generation")
     parser.add_argument("--no-guides", action="store_true", help="Disable PDF cutting guide marks")
     parser.add_argument("--pdf-padding", type=int, default=75, help="PDF proxy border cutting space in pixels (Default: 75 px)")
+    parser.add_argument("--paper-size", choices=["Letter", "Legal", "Tabloid", "A4", "A3", "A2", "A1"], default="Letter", help="Paper size for proxy PDF")
     parser.add_argument("--outdir", type=str, default=".", help="Output directory path")
     args = parser.parse_args()
 
@@ -432,7 +510,7 @@ def run_tui():
     from rich.panel import Panel
 
     console = Console()
-    console.print(Panel.fit("[bold magenta]MagicGatherer[/bold magenta] [cyan]TUI Edition[/cyan]", border_style="green"))
+    console.print(Panel.fit("[bold magenta]MagicGatherer v2.0.1[/bold magenta] [cyan]TUI Edition[/cyan]", border_style="green"))
 
     with Progress(
         SpinnerColumn(),
@@ -455,7 +533,8 @@ def run_tui():
                 not args.no_json, not args.no_csv, not args.no_mpc, not args.no_img, not args.no_pdf,
                 log_cb, prog_cb, args.pdf_padding,
                 skip_cb=lambda m: log_cb(f"Skipped: {m}"),
-                draw_guides=not args.no_guides
+                draw_guides=not args.no_guides,
+                paper_size=args.paper_size
             )
             progress.update(task1, completed=100, description="[bold green]Finished![/bold green]")
         except Exception as e:
