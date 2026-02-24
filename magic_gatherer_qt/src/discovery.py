@@ -2,7 +2,7 @@ import random
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                              QComboBox, QListWidget, QLabel)
 from PyQt5.QtCore import pyqtSignal, QThread
-from ui_core import StyledPane, HeaderLabel, CANVAS_BG, PANE_BG, ACCENT_COLOR
+from ui_core import StyledPane, HeaderLabel, CANVAS_BG, PANE_BG, ACCENT_COLOR, HoverPreviewManager
 from api import safe_get
 
 class CommanderFetchThread(QThread):
@@ -36,6 +36,7 @@ class CommanderFetchThread(QThread):
 class DiscoveryWidget(StyledPane):
     preview_requested = pyqtSignal(str)
     build_requested = pyqtSignal(str)
+    export_requested = pyqtSignal(str)
     
     def __init__(self):
         super().__init__()
@@ -183,10 +184,15 @@ class DiscoveryWidget(StyledPane):
         self.list_widget.itemSelectionChanged.connect(self.on_item_selected)
         layout.addWidget(self.list_widget)
         
-        # Build Button
-        self.btn_build = QPushButton("Build This Commander")
-        self.btn_build.setEnabled(False)
-        self.btn_build.setStyleSheet(f"""
+        # Hover Previews
+        self.preview_manager = HoverPreviewManager(self.list_widget, self._trigger_hover_fetch)
+        
+        # Dual-Rout Buttons
+        btn_layout = QHBoxLayout()
+        
+        self.btn_send_doctor = QPushButton("🩺 Send to Doctor")
+        self.btn_send_doctor.setEnabled(False)
+        self.btn_send_doctor.setStyleSheet(f"""
             QPushButton {{
                 background-color: #4C4C4C;
                 color: white;
@@ -199,8 +205,28 @@ class DiscoveryWidget(StyledPane):
                 color: gray;
             }}
         """)
-        self.btn_build.clicked.connect(self.on_build_clicked)
-        layout.addWidget(self.btn_build)
+        self.btn_send_doctor.clicked.connect(self.on_send_doctor_clicked)
+        btn_layout.addWidget(self.btn_send_doctor)
+        
+        self.btn_send_export = QPushButton("🖨️ Send to Exporter")
+        self.btn_send_export.setEnabled(False)
+        self.btn_send_export.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #4C4C4C;
+                color: white;
+                border-radius: 4px;
+                padding: 8px;
+                font-weight: bold;
+            }}
+            QPushButton:disabled {{
+                background-color: #2C2C2C;
+                color: gray;
+            }}
+        """)
+        self.btn_send_export.clicked.connect(self.on_send_export_clicked)
+        btn_layout.addWidget(self.btn_send_export)
+        
+        layout.addLayout(btn_layout)
         
     def _combo_style(self):
         return """
@@ -291,8 +317,9 @@ class DiscoveryWidget(StyledPane):
         if items and "Error:" not in items[0].text() and "No commanders" not in items[0].text() and "Flipping" not in items[0].text():
             name = items[0].text()
             self.preview_requested.emit(name)
-            self.btn_build.setEnabled(True)
-            self.btn_build.setStyleSheet(f"""
+            
+            # Enable Dual Buttons
+            enabled_style = f"""
                 QPushButton {{
                     background-color: {ACCENT_COLOR};
                     color: white;
@@ -300,15 +327,47 @@ class DiscoveryWidget(StyledPane):
                     padding: 8px;
                     font-weight: bold;
                 }}
-            """)
-        else:
-            self.btn_build.setEnabled(False)
+            """
+            self.btn_send_doctor.setEnabled(True)
+            self.btn_send_doctor.setStyleSheet(enabled_style)
             
-    def on_build_clicked(self):
+            self.btn_send_export.setEnabled(True)
+            self.btn_send_export.setStyleSheet(enabled_style)
+        else:
+            self.btn_send_doctor.setEnabled(False)
+            self.btn_send_export.setEnabled(False)
+            
+    def _trigger_hover_fetch(self, name, manager):
+        # We bounce this back up to main.py `on_preview_requested` but we pass the manager
+        # so main.py knows where to send the image back to.
+        # Actually discovery widget doesn't know about main directly due to signals, 
+        # so let's just make it emit it.
+        # WAIT: Main window's `on_preview_requested` doesn't take a manager arg.
+        # Let's just create an internal Image Fetcher thread for DiscoveryWidget Tooltips
+        from image_fetcher import ImageFetchThread
+        
+        # Stop any active thread
+        if hasattr(self, 'img_thread') and self.img_thread.isRunning():
+            self.img_thread.quit()
+            
+        self.img_thread = ImageFetchThread(card_name=name)
+        self.img_thread.image_ready.connect(manager.display_image)
+        self.img_thread.start()
+            
+    def on_send_doctor_clicked(self):
         items = self.list_widget.selectedItems()
         if items:
             name = items[0].text()
-            self.build_requested.emit(name)
+            self.build_requested.emit(name) # Main.py handles this (routes to Doctor)
+            
+    def on_send_export_clicked(self):
+        items = self.list_widget.selectedItems()
+        if items:
+            name = items[0].text()
+            # We need a new signal to tell Main Window to just populate the search bar
+            # Currently we only have `build_requested`. Let's add `export_requested`.
+            if hasattr(self, 'export_requested'):
+                self.export_requested.emit(name)
             
     def show_help(self):
         from PyQt5.QtWidgets import QMessageBox
