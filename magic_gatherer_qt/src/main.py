@@ -14,11 +14,12 @@ from PyQt5.QtWidgets import (QApplication, QSplashScreen, QMainWindow, QWidget,
                              QDialog, QTabWidget, QSpinBox, QDoubleSpinBox)
 from PyQt5.QtGui import QPixmap, QStandardItemModel, QStandardItem, QCursor
 from PyQt5.QtCore import QThread, pyqtSignal, Qt, QPoint, QTimer
-from ui_core import StyledPane, HeaderLabel, BodyLabel, ErrorTicker, CrossfadeImage, PANE_BG, CANVAS_BG, ACCENT_COLOR, FuzzyProxyModel, HoverPreviewManager
+from ui_core import StyledPane, HeaderLabel, BodyLabel, ErrorTicker, CrossfadeImage, PANE_BG, CANVAS_BG, ACCENT_COLOR, FuzzyProxyModel, HoverPreviewManager, CardPreviewWindow
 from discovery import DiscoveryWidget
 from image_fetcher import ImageFetchThread
 from deck_doctor import DeckDoctorWindow
-from exporters import export_json, export_csv, export_images, export_pdf, export_mtgo_dek, generate_arena_clipboard
+from exporters import export_json, export_csv
+from logic import gather_cards, export_images, export_pdf, export_mtgo_dek, generate_arena_clipboard
 from api import safe_get, safe_post
 
 CACHE_DIR = Path.home() / ".magicgatherer" / "cache"
@@ -225,50 +226,32 @@ class GatherWorker(QThread):
             if not self.deck_data:
                 self.error_occurred.emit("No deck data provided to export.")
                 return
-                
-            # Filter by FORMAT selection
-            fmt = self.options.get("format_filter", "paper")
-            filtered_deck = []
-            for card in self.deck_data:
-                if fmt == "arena" and not card.get("arena_id"):
-                    self.error_occurred.emit(f"Skipping {card.get('name')} (Not on MTG Arena)")
-                    continue
-                elif fmt == "mtgo" and not card.get("mtgo_id"):
-                    self.error_occurred.emit(f"Skipping {card.get('name')} (Not on MTGO)")
-                    continue
-                filtered_deck.append(card)
-                
-            self.deck_data = filtered_deck
-            if not self.deck_data:
-                self.error_occurred.emit("All cards stripped by format filter. Nothing to export.")
-                return
-                
-            if self.options.get("json"):
-                export_json(self.deck_data, self.save_dir, self.prefix)
-                self.log_added.emit("JSON Export Complete.")
-            if self.options.get("csv"):
-                export_csv(self.deck_data, self.save_dir, self.prefix)
-                self.log_added.emit("CSV Export Complete.")
-            if self.options.get("mtgo"):
-                export_mtgo_dek(self.deck_data, self.save_dir / f"{self.prefix}.dek")
-                self.log_added.emit("MTGO .dek Export Complete.")
+
+            def log_wrap(msg): self.log_added.emit(msg)
+            def prog_wrap(val): self.progress_made.emit(val)
+
+            # Use the shared logic
+            gather_cards(
+                save_dir=self.save_dir,
+                source="paste", # Source is redundant for raw data worker, but needed by logic
+                raw_paste="", 
+                file_path="", 
+                edhrec_cmd="",
+                format_pref=self.options.get("format_filter", "paper"),
+                options=self.options,
+                log_cb=log_wrap,
+                progress_cb=prog_wrap,
+                pdf_config=self.options.get("pdf_settings")
+            )
+            
+            # Post-logic cleanup: Arena clipboard
             if self.options.get("arena"):
                 arena_str = generate_arena_clipboard(self.deck_data)
                 QApplication.clipboard().setText(arena_str)
                 self.log_added.emit("MTG Arena string copied to clipboard!")
-                
-            if self.options.get("img") or self.options.get("pdf"):
-                export_images(self.deck_data, self.save_dir, self.prefix, 
-                              self.log_added.emit, self.progress_made.emit)
-            if self.options.get("pdf"):
-                pdf_config = self.options.get("pdf_settings", {})
-                export_pdf(self.deck_data, self.save_dir, self.prefix, 
-                           self.log_added.emit, pdf_config=pdf_config)
-            
+
             self.finished_ok.emit()
-            self.log_added.emit("Gathering Complete!")
         except Exception as e:
-            self.log_added.emit(f"Critical Error: {e}")
             self.error_occurred.emit(str(e))
 
 def create_groupbox(title: str) -> QGroupBox:
@@ -647,9 +630,25 @@ class MainWindow(QMainWindow):
         """)
         self.btn_help.clicked.connect(self.show_help)
         
+        self.btn_export_logs = QPushButton("📄 Export Logs")
+        self.btn_export_logs.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #2C2C2C;
+                color: #A3C095;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-weight: bold;
+            }}
+            QPushButton:pressed {{
+                background-color: #4C4C4C;
+            }}
+        """)
+        self.btn_export_logs.clicked.connect(self.export_logs)
+        
         btn_row = QHBoxLayout()
         btn_row.addWidget(self.btn_analyze)
         btn_row.addWidget(self.btn_roller)
+        btn_row.addWidget(self.btn_export_logs)
         btn_row.addWidget(self.btn_help)
         layout_input.addLayout(btn_row)
         
@@ -779,9 +778,11 @@ class MainWindow(QMainWindow):
         footer = QHBoxLayout()
         self.btn_tui = QPushButton("Launch TUI")
         self.btn_tui.setStyleSheet("background-color: #2C2C2C; color: rgba(255,255,255,150); padding: 6px 16px; border-radius: 4px;")
+        self.btn_tui.clicked.connect(self.on_launch_tui)
         
         self.btn_cache = QPushButton("Clear Cache")
         self.btn_cache.setStyleSheet("background-color: #2C2C2C; color: rgba(255,255,255,150); padding: 6px 16px; border-radius: 4px;")
+        self.btn_cache.clicked.connect(self.on_clear_cache)
         
         footer.addWidget(self.btn_tui)
         footer.addWidget(self.btn_cache)
@@ -881,20 +882,97 @@ class MainWindow(QMainWindow):
             "Use the Deck Doctor to get EDHREC recommendations, or the Deck Roller to find a random commander."
         )
 
+    def on_launch_tui(self):
+        import subprocess
+        import os
+        import platform
+        from pathlib import Path
+
+        # Correct path for v3.0 TUI
+        try:
+            script_path = Path(__file__).resolve().parent / "tui" / "app.py"
+            if not script_path.exists():
+                self.statusBar().showMessage(f"TUI not found at {script_path}", 5000)
+                return
+
+            python_exe = "python3"
+            
+            # Get absolute path to src to inject into PYTHONPATH
+            src_dir = str(Path(__file__).resolve().parent)
+            
+            if platform.system() == "Darwin":
+                # macOS: Spawn in a new Terminal window using osascript
+                # We also inject the PYTHONPATH inside the script
+                cmd = f'export PYTHONPATH=\"{src_dir}:$PYTHONPATH\" && {python_exe} \"{script_path}\"'
+                applescript = f'''
+                tell application "Terminal"
+                    do script "{cmd}"
+                    activate
+                end tell
+                '''
+                subprocess.Popen(["osascript", "-e", applescript])
+                self.statusBar().showMessage("Launching TUI in Terminal...", 3000)
+            elif platform.system() == "Windows":
+                # Windows: Use 'start cmd' to pop a new window
+                cmd_str = f'set PYTHONPATH={src_dir};%PYTHONPATH% && {python_exe} "{script_path}"'
+                subprocess.Popen(f'start cmd /c "{cmd_str}"', shell=True)
+                self.statusBar().showMessage("Launching TUI...", 3000)
+            else:
+                # Linux: Try x-terminal-emulator
+                cmd_bash = f'export PYTHONPATH=\"{src_dir}:$PYTHONPATH\" && {python_exe} \"{script_path}\"'
+                subprocess.Popen(["x-terminal-emulator", "-e", f"bash -c '{cmd_bash}'"])
+                self.statusBar().showMessage("Launching TUI...", 3000)
+
+        except Exception as e:
+            self.statusBar().showMessage(f"TUI Launch Error: {e}", 5000)
+
+    def on_clear_cache(self):
+        from image_fetcher import CACHE_DIR
+        import shutil
+        if CACHE_DIR.exists():
+            try:
+                shutil.rmtree(CACHE_DIR)
+                CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                self.statusBar().showMessage("Image cache cleared successfully!", 4000)
+            except Exception as e:
+                self.statusBar().showMessage(f"Failed to clear cache: {e}", 5000)
+        else:
+            self.statusBar().showMessage("Cache is already empty.", 3000)
+
+    def export_logs(self):
+        log_path = Path("magicgatherer_error.log")
+        if not log_path.exists():
+            self.statusBar().showMessage("No error logs found. The app is healthy!", 4000)
+            return
+            
+        dest, _ = QFileDialog.getSaveFileName(self, "Export Log File", "magicgatherer_error.log", "Log Files (*.log);;All Files (*)")
+        if dest:
+            try:
+                import shutil
+                shutil.copy(log_path, dest)
+                self.statusBar().showMessage(f"Logs successfully exported to {dest}", 6000)
+            except Exception as e:
+                self.statusBar().showMessage(f"Failed to export logs: {e}", 6000)
+
     def on_launch_deckdoctor(self):
         raw_text = self.paste_area.toPlainText()
+        
+        format_choice = "paper"
+        if self.radio_arena.isChecked():
+            format_choice = "arena"
+        elif self.radio_mtgo.isChecked():
+            format_choice = "mtgo"
         
         # Safely reuse the existing DeckDoctorWindow to avoid destroying active QThreads
         if hasattr(self, 'deck_doctor_window'):
             if not self.deck_doctor_window.isVisible():
                 self.deck_doctor_window.paste_area.setText(raw_text)
-                self.deck_doctor_window.paste_area.setText(text)
-                self.deck_doctor_window.set_format_filter(format_choice) # Update format filter
+                self.deck_doctor_window.format_choice = format_choice # Update format filter
             self.deck_doctor_window.show()
             self.deck_doctor_window.activateWindow()
             return
             
-        self.deck_doctor_window = DeckDoctorWindow(initial_decklist=text, commanders_model=self.source_model, format_filter=format_choice)
+        self.deck_doctor_window = DeckDoctorWindow(initial_decklist=raw_text, commanders_model=self.source_model, format_choice=format_choice)
         self.deck_doctor_window.dashboard.gap_filler_requested.connect(self.on_gap_filler_requested)
         self.deck_doctor_window.send_to_exporter.connect(self.on_receive_from_doctor)
         self.deck_doctor_window.show()

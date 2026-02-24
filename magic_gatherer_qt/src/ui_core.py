@@ -212,11 +212,13 @@ class CardPreviewWindow(QMainWindow):
         self.setCentralWidget(self.image_label)
         
     def set_pixmap(self, pixmap):
+        if not pixmap or pixmap.isNull():
+            return
         scaled = pixmap.scaled(self.width() - 8, self.height() - 8, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self.image_label.setPixmap(scaled)
         
     def resizeEvent(self, event):
-        if self.image_label.pixmap():
+        if self.image_label.pixmap() and not self.image_label.pixmap().isNull():
             scaled = self.image_label.pixmap().scaled(self.width() - 8, self.height() - 8, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             self.image_label.setPixmap(scaled)
         super().resizeEvent(event)
@@ -240,12 +242,13 @@ class HoverPreviewManager(QObject):
         self.last_global_pos = QPoint()
         
         # Install event filter to track mouse movements easily
+        self.list_view.installEventFilter(self)
         self.list_view.viewport().installEventFilter(self)
         self.list_view.viewport().setMouseTracking(True)
         self.list_view.setMouseTracking(True)
         
     def eventFilter(self, obj, event):
-        if obj is self.list_view.viewport():
+        if obj is self.list_view or obj is self.list_view.viewport():
             if event.type() == QEvent.MouseMove:
                 self._handle_mouse_move(event)
             elif event.type() == QEvent.Leave:
@@ -253,13 +256,17 @@ class HoverPreviewManager(QObject):
         return super().eventFilter(obj, event)
         
     def _handle_mouse_move(self, event):
-        pos = event.pos()
-        index = self.list_view.indexAt(pos)
-        self.last_global_pos = event.globalPos()
+        global_pos = event.globalPos()
+        self.last_global_pos = global_pos
+        
+        # Always use viewport coordinates for indexAt
+        viewport_pos = self.list_view.viewport().mapFromGlobal(global_pos)
+        index = self.list_view.indexAt(viewport_pos)
         
         if index.isValid():
             name = self.list_view.model().data(index, Qt.DisplayRole)
             if name and name != self.current_highlight:
+                print(f"DEBUG: Hovering over {name}")
                 self.current_highlight = name
                 self.preview_window.hide()
                 self.hover_timer.start(500)
@@ -269,21 +276,38 @@ class HoverPreviewManager(QObject):
     def _handle_mouse_leave(self):
         self.current_highlight = ""
         self.hover_timer.stop()
-        self.preview_window.hide()
+        if self.preview_window.isVisible():
+            self.preview_window.hide()
 
     def _fetch_highlighted_image(self):
         if self.current_highlight:
             self.fetch_callback(self.current_highlight, self)
 
     def display_image(self, pixmap):
+        if not pixmap or pixmap.isNull():
+            return
+            
         self.preview_window.set_pixmap(pixmap)
         
         # Position near the cursor but ensure it fits on screen
-        tooltip_pos = self.last_global_pos + QPoint(25, 25)
+        # We use global coordinates
+        tooltip_pos = self.last_global_pos + QPoint(20, 20)
+        
+        # Ensure it doesn't go off screen
+        try:
+            from PyQt5.QtWidgets import QApplication
+            screen = QApplication.primaryScreen().geometry()
+            if tooltip_pos.x() + self.preview_window.width() > screen.width():
+                tooltip_pos.setX(self.last_global_pos.x() - self.preview_window.width() - 20)
+            if tooltip_pos.y() + self.preview_window.height() > screen.height():
+                tooltip_pos.setY(self.last_global_pos.y() - self.preview_window.height() - 20)
+        except:
+            pass
+            
         self.preview_window.move(tooltip_pos)
         
         if not self.preview_window.isVisible():
             self.preview_window.setAttribute(Qt.WA_ShowWithoutActivating)
+            self.preview_window.setWindowFlags(Qt.ToolTip | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
             self.preview_window.show()
             self.preview_window.raise_()
-            self.preview_window.show()
