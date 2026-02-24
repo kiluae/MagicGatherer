@@ -241,12 +241,53 @@ class HoverPreviewManager(QObject):
         self.current_highlight = ""
         self.last_global_pos = QPoint()
         
-        # Install event filter to track mouse movements easily
+        # ── Watchdog timer: polls every 60ms to guarantee the preview hides ──
+        # On Windows, QEvent.Leave is unreliable (missed via scrollbar, alt-tab,
+        # window resize, etc.). This is the standard workaround.
+        self._watchdog = QTimer(self)
+        self._watchdog.setInterval(60)
+        self._watchdog.timeout.connect(self._watchdog_tick)
+        self._watchdog.start()
+
+        # Install event filter to track mouse movements
         self.list_view.installEventFilter(self)
         self.list_view.viewport().installEventFilter(self)
         self.list_view.viewport().setMouseTracking(True)
         self.list_view.setMouseTracking(True)
+
+        # Hide when the application loses focus (alt-tab, Win+D, etc.)
+        try:
+            from PyQt5.QtWidgets import QApplication
+            app = QApplication.instance()
+            if app:
+                app.focusWindowChanged.connect(self._on_focus_changed)
+        except Exception:
+            pass
+
         
+    def _watchdog_tick(self):
+        """Polls real cursor position; hides preview if mouse has left the viewport."""
+        if not self.preview_window.isVisible():
+            return
+        try:
+            from PyQt5.QtGui import QCursor
+            cursor_global = QCursor.pos()
+            vp = self.list_view.viewport()
+            vp_rect = vp.rect()
+            tl = vp.mapToGlobal(vp_rect.topLeft())
+            br = vp.mapToGlobal(vp_rect.bottomRight())
+            inside = (tl.x() <= cursor_global.x() <= br.x() and
+                      tl.y() <= cursor_global.y() <= br.y())
+            if not inside:
+                self._handle_mouse_leave()
+        except Exception:
+            pass
+
+    def _on_focus_changed(self, window):
+        """Hide preview when the application window loses focus."""
+        if window is None:
+            self._handle_mouse_leave()
+
     def eventFilter(self, obj, event):
         if obj is self.list_view or obj is self.list_view.viewport():
             if event.type() == QEvent.MouseMove:
@@ -259,14 +300,12 @@ class HoverPreviewManager(QObject):
         global_pos = event.globalPos()
         self.last_global_pos = global_pos
         
-        # Always use viewport coordinates for indexAt
         viewport_pos = self.list_view.viewport().mapFromGlobal(global_pos)
         index = self.list_view.indexAt(viewport_pos)
         
         if index.isValid():
             name = self.list_view.model().data(index, Qt.DisplayRole)
             if name and name != self.current_highlight:
-                print(f"DEBUG: Hovering over {name}")
                 self.current_highlight = name
                 self.preview_window.hide()
                 self.hover_timer.start(500)
