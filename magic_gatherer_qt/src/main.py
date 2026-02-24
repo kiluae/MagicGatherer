@@ -888,11 +888,13 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'deck_doctor_window'):
             if not self.deck_doctor_window.isVisible():
                 self.deck_doctor_window.paste_area.setText(raw_text)
+                self.deck_doctor_window.paste_area.setText(text)
+                self.deck_doctor_window.set_format_filter(format_choice) # Update format filter
             self.deck_doctor_window.show()
             self.deck_doctor_window.activateWindow()
             return
             
-        self.deck_doctor_window = DeckDoctorWindow(initial_decklist=raw_text, commanders_model=self.source_model)
+        self.deck_doctor_window = DeckDoctorWindow(initial_decklist=text, commanders_model=self.source_model, format_filter=format_choice)
         self.deck_doctor_window.dashboard.gap_filler_requested.connect(self.on_gap_filler_requested)
         self.deck_doctor_window.send_to_exporter.connect(self.on_receive_from_doctor)
         self.deck_doctor_window.show()

@@ -259,7 +259,7 @@ class HoverPreviewManager(QObject):
         
         if index.isValid():
             name = self.list_view.model().data(index, Qt.DisplayRole)
-            if name != self.current_highlight:
+            if name and name != self.current_highlight:
                 self.current_highlight = name
                 self.preview_window.hide()
                 self.hover_timer.start(500)
@@ -279,9 +279,11 @@ class HoverPreviewManager(QObject):
         self.preview_window.set_pixmap(pixmap)
         
         # Position near the cursor but ensure it fits on screen
-        tooltip_pos = self.last_global_pos + QPoint(15, 15)
+        tooltip_pos = self.last_global_pos + QPoint(25, 25)
         self.preview_window.move(tooltip_pos)
         
         if not self.preview_window.isVisible():
             self.preview_window.setAttribute(Qt.WA_ShowWithoutActivating)
+            self.preview_window.show()
+            self.preview_window.raise_()
             self.preview_window.show()

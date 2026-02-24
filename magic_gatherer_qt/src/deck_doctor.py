@@ -165,9 +165,11 @@ class DeckAnalysisThread(QThread):
     cards_fetched = pyqtSignal(list, str)
     error_occurred = pyqtSignal(str)
     
-    def __init__(self, raw_text):
+    def __init__(self, raw_text, format_choice="paper"):
         super().__init__()
         self.raw_text = raw_text
+        self.format_choice = format_choice
+        
         
     def run(self):
         try:
@@ -241,7 +243,14 @@ class DeckAnalysisThread(QThread):
                 resp = safe_post("https://api.scryfall.com/cards/collection", json=payload)
                 resp.raise_for_status()
                 data = resp.json()
-                all_cards.extend(data.get("data", []))
+                
+                for card in data.get("data", []):
+                    games = card.get("games", [])
+                    if self.format_choice == "arena" and "arena" not in games:
+                        continue
+                    if self.format_choice == "mtgo" and "mtgo" not in games:
+                        continue
+                    all_cards.append(card)
                 
             detected_commander = commander_candidates[0] if commander_candidates else ""
             self.cards_fetched.emit(all_cards, detected_commander)
@@ -313,11 +322,12 @@ class EdhrecComparisonThread(QThread):
 class DeckDoctorWindow(QMainWindow):
     send_to_exporter = pyqtSignal(str, str) # text, commander_name
 
-    def __init__(self, initial_decklist="", commanders_model=None):
+    def __init__(self, initial_decklist="", commanders_model=None, format_choice="paper"):
         super().__init__()
-        self.setWindowTitle("MagicGatherer - Deck Doctor 🩺")
+        self.setWindowTitle("Deck Doctor Analytics 🩺")
         self.resize(1200, 800)
         self.setStyleSheet("background-color: #121212;")
+        self.format_choice = format_choice
         
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
@@ -511,7 +521,7 @@ class DeckDoctorWindow(QMainWindow):
             self.edhrec_thread.quit()
         
         if text.strip():
-            self.analysis_thread = DeckAnalysisThread(text)
+            self.analysis_thread = DeckAnalysisThread(text, self.format_choice)
             self.analysis_thread.cards_fetched.connect(self.on_deck_analyzed)
             self.analysis_thread.error_occurred.connect(lambda err: self.dashboard.status_label.setText(f"Error: {err}"))
             self.analysis_thread.start()
