@@ -283,25 +283,62 @@ class EdhrecComparisonThread(QThread):
             data = r.json()
             cardlists = data.get("container", {}).get("json_dict", {}).get("cardlists", [])
             
-            top_staples = []
-            all_edhrec_cards = []
-            for lst in cardlists:
-                category_cards = [c.get("name") for c in lst.get("cardviews", [])]
-                all_edhrec_cards.extend(category_cards)
-                if lst.get("header") in ["High Synergy Cards", "Top Cards"]:
-                    top_staples.extend(category_cards)
+            top_staples = {}
+            all_edhrec_cards = set()
             
-            # Remove duplicates
-            top_staples = list(set([s for s in top_staples if s]))
-            all_edhrec_cards = list(set([s for s in all_edhrec_cards if s]))
+            # Categories that imply "good" cards you should add
+            core_categories = ["High Synergy Cards", "Top Cards", "Creatures", "Instants", "Sorceries", "Enchantments", "Artifacts", "Planeswalkers"]
+            
+            # Functional Mapping
+            category_map = {
+                "High Synergy Cards": "S",
+                "Top Cards": "T",
+                "Creatures": "C",
+                "Instants": "I",
+                "Sorceries": "I",
+                "Enchantments": "E",
+                "Artifacts": "A",
+                "Planeswalkers": "P",
+                "Lands": "L",
+                "Utility Lands": "L",
+                "Mana Artifacts": "M",
+                "Card Draw": "D",
+                "Removal": "R",
+                "Board Wipes": "W",
+                "Tutors": "G", # "Guide" / Tutors
+                "Counterspells": "X",
+            }
+            
+            # Include all categories for maximum recommendations
+            for lst in cardlists:
+                category_name = lst.get("header", "")
+                symbol = category_map.get(category_name, "Card")
+                
+                for c in lst.get("cardviews", []):
+                    name = c.get("name")
+                    if not name: continue
+                        
+                    all_edhrec_cards.add(name)
+                    
+                    # If it's a new card or we have a more specific symbol than general "Card"
+                    if name not in top_staples or (top_staples[name] in ["Card", "C", "I", "E", "A"] and symbol not in ["Card", "C", "I", "E", "A"]):
+                        top_staples[name] = symbol
             
             adds = []
-            for st in top_staples:
-                if st.lower() not in self.deck_names and "Land" not in st:
-                    adds.append(st)
+            basics_set = set(["plains", "island", "swamp", "mountain", "forest", "wastes", 
+                          "snow-covered plains", "snow-covered island", "snow-covered swamp", 
+                          "snow-covered mountain", "snow-covered forest"])
+                          
+            for name, symbol in top_staples.items():
+                if name.lower() not in self.deck_names:
+                    # Filter out basic lands from adds
+                    if symbol == "L" and name.lower() in basics_set:
+                        continue
+                    adds.append(f"[{symbol}] {name}")
+            
+            adds.sort() # Alphabetical for easier browsing if list is huge
                     
             cuts = []
-            # Define basic lands to strictly exclude from cuts
             basics = ["plains", "island", "swamp", "mountain", "forest", "wastes", 
                       "snow-covered plains", "snow-covered island", "snow-covered swamp", 
                       "snow-covered mountain", "snow-covered forest"]
@@ -309,12 +346,11 @@ class EdhrecComparisonThread(QThread):
             edhrec_lower = [s.lower() for s in all_edhrec_cards]
             for d in self.deck_names:
                 clean_name = d.strip().lower()
-                # Determine if it's a basic land (can have leading/trailing garbage from parser sometimes)
                 is_basic = any(b in clean_name for b in basics)
                 if not is_basic and clean_name not in edhrec_lower:
                     cuts.append(d.title())
                     
-            self.ready.emit(adds[:50], cuts)
+            self.ready.emit(adds[:500], cuts[:100])
         except Exception as e:
             self.error_occurred.emit(str(e))
 
@@ -494,8 +530,12 @@ class DeckDoctorWindow(QMainWindow):
         layout.addWidget(self.dashboard, stretch=1)
         layout.addWidget(right_panel, stretch=1)
         
-    def _trigger_hover_fetch(self, name, manager):
+    def _trigger_hover_fetch(self, raw_string, manager):
         from image_fetcher import ImageFetchThread
+        
+        # Strip the "[Symbol] " prefix if it exists so Scryfall can find the card
+        import re
+        name = re.sub(r'^\[.*?\]\s+', '', raw_string).strip()
         
         if hasattr(self, 'img_thread') and self.img_thread.isRunning():
             self.img_thread.quit()
@@ -556,8 +596,11 @@ class DeckDoctorWindow(QMainWindow):
         self.model_cuts.setStringList(cuts)
 
     def on_recommendation_double_clicked(self, index):
-        card_name = self.model_add.data(index, Qt.DisplayRole)
-        if card_name:
+        raw_string = self.model_add.data(index, Qt.DisplayRole)
+        if raw_string:
+            import re
+            card_name = re.sub(r'^\[.*?\]\s+', '', raw_string).strip()
+            
             # Append to text area
             current_text = self.paste_area.toPlainText()
             self.paste_area.setText(f"{current_text}\n1 {card_name}".strip())
