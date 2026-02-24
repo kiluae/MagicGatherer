@@ -45,7 +45,7 @@ class DiscoveryWidget(StyledPane):
         layout.setSpacing(12)
         
         header_row = QHBoxLayout()
-        header_row.addWidget(HeaderLabel("Phase 4: The Discovery Loop"))
+        header_row.addWidget(HeaderLabel("The Discovery Roller"))
         self.btn_help = QPushButton("❓ Help")
         self.btn_help.setStyleSheet(f"""
             QPushButton {{
