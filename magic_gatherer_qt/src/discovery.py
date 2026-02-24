@@ -15,7 +15,6 @@ class CommanderFetchThread(QThread):
         
     def run(self):
         try:
-            # We want random commanders, so we sort by random if requested or just execute the query
             url = "https://api.scryfall.com/cards/search"
             resp = safe_get(url, params={"q": self.query})
             resp.raise_for_status()
@@ -23,7 +22,6 @@ class CommanderFetchThread(QThread):
             
             cards = data.get("data", [])
             
-            # If standard search, we just shuffle the first page to simulate random picks if sorting is not explicit
             if "sort=random" not in self.query:
                 random.shuffle(cards)
                 
@@ -31,6 +29,43 @@ class CommanderFetchThread(QThread):
             self.results_ready.emit(tops)
         except Exception as e:
             self.error_occurred.emit(str(e))
+
+
+class CommanderBrowseThread(QThread):
+    """Paginates through ALL Scryfall results for a query, emitting each page."""
+    page_ready = pyqtSignal(list)  # emits each page as it arrives
+    finished_all = pyqtSignal(int) # total count when done
+    error_occurred = pyqtSignal(str)
+
+    def __init__(self, query):
+        super().__init__()
+        self.query = query
+        self._abort = False
+
+    def stop(self):
+        self._abort = True
+
+    def run(self):
+        try:
+            url = "https://api.scryfall.com/cards/search"
+            # Sort alphabetically for a clean browse experience
+            params = {"q": self.query, "order": "name"}
+            total = 0
+            while url and not self._abort:
+                resp = safe_get(url, params=params)
+                resp.raise_for_status()
+                data = resp.json()
+                cards = data.get("data", [])
+                names = [c["name"] for c in cards]
+                if names:
+                    self.page_ready.emit(names)
+                    total += len(names)
+                url = data.get("next_page")  # None when exhausted
+                params = {}  # next_page URL already has query params
+            self.finished_all.emit(total)
+        except Exception as e:
+            self.error_occurred.emit(str(e))
+
 
 
 class DiscoveryWidget(StyledPane):
@@ -45,7 +80,7 @@ class DiscoveryWidget(StyledPane):
         layout.setSpacing(12)
         
         header_row = QHBoxLayout()
-        header_row.addWidget(HeaderLabel("The Discovery Roller"))
+        header_row.addWidget(HeaderLabel("Commander Roller"))
         self.btn_help = QPushButton("❓ Help")
         self.btn_help.setStyleSheet(f"""
             QPushButton {{
@@ -63,6 +98,7 @@ class DiscoveryWidget(StyledPane):
         header_row.addWidget(self.btn_help)
         header_row.addStretch()
         layout.addLayout(header_row)
+
         
         # WUBRG Toggle Row
         wubrg_layout = QHBoxLayout()
@@ -125,6 +161,23 @@ class DiscoveryWidget(StyledPane):
         """)
         self.btn_manual.clicked.connect(lambda: self.trigger_search(randomize=False))
         ctrl_layout.addWidget(self.btn_manual)
+
+        self.btn_browse_all = QPushButton("📋 Browse All")
+        self.btn_browse_all.setToolTip("List every commander matching the current color and format filters")
+        self.btn_browse_all.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #3A3A3A;
+                color: #A0D4A0;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-weight: bold;
+            }}
+            QPushButton:pressed {{
+                background-color: #2C2C2C;
+            }}
+        """)
+        self.btn_browse_all.clicked.connect(self.trigger_browse_all)
+        ctrl_layout.addWidget(self.btn_browse_all)
         
         self.btn_reset = QPushButton("↺")
         self.btn_reset.setToolTip("Reset Colors")
@@ -183,7 +236,10 @@ class DiscoveryWidget(StyledPane):
         self.list_widget.setFixedHeight(120)
         self.list_widget.itemSelectionChanged.connect(self.on_item_selected)
         layout.addWidget(self.list_widget)
+        self._browse_thread = None
+        self._browse_count = 0
         
+
         # Hover Previews
         self.preview_manager = HoverPreviewManager(self.list_widget, self._trigger_hover_fetch)
         
@@ -298,6 +354,59 @@ class DiscoveryWidget(StyledPane):
         self.fetcher.results_ready.connect(self.on_fetch_success)
         self.fetcher.error_occurred.connect(self.on_fetch_error)
         self.fetcher.start()
+
+    def _build_query(self):
+        """Returns the Scryfall query string from the current filter state (shared by both buttons)."""
+        active_colors = [code for code, btn in self.color_buttons.items() if btn.isChecked()]
+        identity = "id=" + "".join(active_colors) if active_colors else "id=c"
+        pieces = ["is:commander", identity]
+
+        cmc_text = self.cmc_combo.currentText()
+        if "≤ 3" in cmc_text:
+            pieces.append("cmc<=3")
+        elif "4-5" in cmc_text:
+            pieces.append("cmc>=4 cmc<=5")
+        elif "≥ 6" in cmc_text:
+            pieces.append("cmc>=6")
+
+        fmt = self.format_combo.currentText()
+        if fmt == "Arena":
+            pieces.append("game:arena")
+        elif fmt == "MTGO":
+            pieces.append("game:mtgo")
+
+        return " ".join(pieces)
+
+    def trigger_browse_all(self):
+        """Fetch and list EVERY commander matching current color/CMC/format filters."""
+        # Stop any running browse
+        if self._browse_thread and self._browse_thread.isRunning():
+            self._browse_thread.stop()
+            self._browse_thread.wait()
+
+        self.list_widget.clear()
+        self._browse_count = 0
+        self.list_widget.addItem("📋 Loading all commanders…")
+
+        query = self._build_query()
+
+        self._browse_thread = CommanderBrowseThread(query)
+        self._browse_thread.page_ready.connect(self.on_browse_page)
+        self._browse_thread.finished_all.connect(self.on_browse_done)
+        self._browse_thread.error_occurred.connect(self.on_fetch_error)
+        self._browse_thread.start()
+
+    def on_browse_page(self, names):
+        """Called for each page of results as they stream in."""
+        if self._browse_count == 0:
+            self.list_widget.clear()  # Remove the loading placeholder
+        for name in names:
+            self.list_widget.addItem(name)
+        self._browse_count += len(names)
+
+    def on_browse_done(self, total):
+        self.list_widget.addItem(f"── {total} commanders total ──")
+
         
     def on_fetch_success(self, names):
         self.list_widget.clear()
