@@ -263,93 +263,128 @@ class EdhrecComparisonThread(QThread):
     ready = pyqtSignal(list, list) # adds, cuts
     error_occurred = pyqtSignal(str)
     
-    def __init__(self, commander_name, deck_names):
+    def __init__(self, commander_name, deck_names, format_pref="paper"):
         super().__init__()
         self.commander = commander_name
         self.deck_names = set([n.lower() for n in deck_names])
-        
+        self.format_pref = format_pref.lower()
+
     def run(self):
         try:
             if not self.commander.strip():
                 self.ready.emit([], [])
                 return
-                
+
             cmd_slug = self.commander.lower().replace(" ", "-").replace("'", "").replace(",", "")
             r = safe_get(f"https://json.edhrec.com/pages/commanders/{cmd_slug}.json")
             if r.status_code != 200:
                 self.error_occurred.emit(f"EDHREC not found for {cmd_slug}")
                 return
-                
+
             data = r.json()
             cardlists = data.get("container", {}).get("json_dict", {}).get("cardlists", [])
-            
-            top_staples = {}
+
+            top_staples = {}  # name -> symbol
             all_edhrec_cards = set()
-            
-            # Categories that imply "good" cards you should add
-            core_categories = ["High Synergy Cards", "Top Cards", "Creatures", "Instants", "Sorceries", "Enchantments", "Artifacts", "Planeswalkers"]
-            
-            # Functional Mapping
-            category_map = {
-                "High Synergy Cards": "S",
-                "Top Cards": "T",
-                "Creatures": "C",
-                "Instants": "I",
-                "Sorceries": "I",
-                "Enchantments": "E",
-                "Artifacts": "A",
-                "Planeswalkers": "P",
-                "Lands": "L",
-                "Utility Lands": "L",
-                "Mana Artifacts": "M",
-                "Card Draw": "D",
-                "Removal": "R",
-                "Board Wipes": "W",
-                "Tutors": "G", # "Guide" / Tutors
-                "Counterspells": "X",
-            }
-            
-            # Include all categories for maximum recommendations
+
+            # ── Comprehensive category → symbol mapping ──
+            def _category_symbol(cat: str) -> str:
+                low = cat.lower().strip()
+                # Draw
+                if any(k in low for k in ["draw", "cantrip", "loot", "card advantage", "divination", "impulse", "card selection", "cycle"]):
+                    return "D"
+                # Ramp
+                if any(k in low for k in ["ramp", "mana artifact", "mana rock", "acceleration", "mana fix", "mana base"]):
+                    return "M"
+                # Removal
+                if any(k in low for k in ["removal", "exile", "destroy", "kill spell", "spot removal", "targeted", "interaction"]):
+                    return "R"
+                # Board wipes
+                if any(k in low for k in ["board wipe", "sweeper", "wrath", "mass removal"]):
+                    return "W"
+                # Protection / counters
+                if any(k in low for k in ["counter", "protection", "stax", "tax"]):
+                    return "X"
+                # Tutors
+                if any(k in low for k in ["tutor", "toolbox"]):
+                    return "G"
+                # Lands
+                if "land" in low:
+                    return "L"
+                # Synergy
+                if "synergy" in low or "engine" in low:
+                    return "S"
+                # Top / staples
+                if any(k in low for k in ["top card", "staple", "new card", "popular"]):
+                    return "T"
+                # Type-line fallbacks
+                if "creature" in low:     return "♟"
+                if "planeswalker" in low: return "★"
+                if "enchantment" in low:  return "E"
+                if "artifact" in low:     return "A"
+                if "instant" in low or "sorcery" in low: return "I"
+                return "Card"
+
+            # ── Phase 1: scan all EDHREC categories ──
             for lst in cardlists:
                 category_name = lst.get("header", "")
-                symbol = category_map.get(category_name, "Card")
-                
+                symbol = _category_symbol(category_name)
+
                 for c in lst.get("cardviews", []):
                     name = c.get("name")
-                    if not name: continue
-                        
-                    all_edhrec_cards.add(name)
-                    
-                    # If it's a new card or we have a more specific symbol than general "Card"
-                    if name not in top_staples or (top_staples[name] in ["Card", "C", "I", "E", "A"] and symbol not in ["Card", "C", "I", "E", "A"]):
-                        top_staples[name] = symbol
-            
-            adds = []
-            basics_set = set(["plains", "island", "swamp", "mountain", "forest", "wastes", 
-                          "snow-covered plains", "snow-covered island", "snow-covered swamp", 
-                          "snow-covered mountain", "snow-covered forest"])
-                          
-            for name, symbol in top_staples.items():
-                if name.lower() not in self.deck_names:
-                    # Filter out basic lands from adds
-                    if symbol == "L" and name.lower() in basics_set:
+                    if not name:
                         continue
-                    adds.append(f"[{symbol}] {name}")
-            
-            adds.sort() # Alphabetical for easier browsing if list is huge
-                    
-            cuts = []
-            basics = ["plains", "island", "swamp", "mountain", "forest", "wastes", 
-                      "snow-covered plains", "snow-covered island", "snow-covered swamp", 
-                      "snow-covered mountain", "snow-covered forest"]
-                      
-            edhrec_lower = [s.lower() for s in all_edhrec_cards]
-            for d in self.deck_names:
-                clean_name = d.strip().lower()
-                is_basic = any(b in clean_name for b in basics)
-                if not is_basic and clean_name not in edhrec_lower:
-                    cuts.append(d.title())
-                    
+                    all_edhrec_cards.add(name)
+
+                    # Prefer more specific symbols; "Card" is the lowest priority
+                    GENERIC = {"Card", "♟", "E", "A", "I", "★"}
+                    if name not in top_staples or (top_staples[name] in GENERIC and symbol not in GENERIC):
+                        top_staples[name] = symbol
+
+            basics_set = {
+                "plains", "island", "swamp", "mountain", "forest", "wastes",
+                "snow-covered plains", "snow-covered island", "snow-covered swamp",
+                "snow-covered mountain", "snow-covered forest"
+            }
+
+            # Build candidate add list (cards not in deck, not basic lands)
+            candidates = [
+                (name, symbol) for name, symbol in top_staples.items()
+                if name.lower() not in self.deck_names
+                and not (symbol == "L" and name.lower() in basics_set)
+            ]
+
+            # ── Phase 2: format filter via Scryfall /cards/collection ──
+            if self.format_pref in ("arena", "mtgo"):
+                game_tag = "arena" if self.format_pref == "arena" else "mtgo"
+                # Batch 75 at a time (Scryfall limit)
+                legal_names = set()
+                batch_size = 75
+                names_only = [n for n, _ in candidates]
+                for i in range(0, len(names_only), batch_size):
+                    batch = names_only[i:i + batch_size]
+                    payload = {"identifiers": [{"name": n} for n in batch]}
+                    try:
+                        resp = safe_post("https://api.scryfall.com/cards/collection", json=payload)
+                        if resp.status_code == 200:
+                            for card in resp.json().get("data", []):
+                                if game_tag in card.get("games", []):
+                                    legal_names.add(card["name"])
+                    except Exception:
+                        # On error, include all (fail-open)
+                        legal_names.update(batch)
+                candidates = [(n, s) for n, s in candidates if n in legal_names]
+
+            adds = sorted(f"[{sym}] {name}" for name, sym in candidates)
+
+            # ── Cuts: deck cards not appearing anywhere on EDHREC ──
+            edhrec_lower = {s.lower() for s in all_edhrec_cards}
+            cuts = [
+                d.title() for d in self.deck_names
+                if d.strip() not in edhrec_lower
+                and not any(b in d.strip() for b in basics_set)
+            ]
+
             self.ready.emit(adds[:500], cuts[:100])
         except Exception as e:
             self.error_occurred.emit(str(e))
@@ -585,7 +620,7 @@ class DeckDoctorWindow(QMainWindow):
             if hasattr(self, 'edhrec_thread') and self.edhrec_thread.isRunning():
                 self.edhrec_thread.quit()
                 
-            self.edhrec_thread = EdhrecComparisonThread(cmd_name, deck_names)
+            self.edhrec_thread = EdhrecComparisonThread(cmd_name, deck_names, format_pref=self.format_choice)
             self.edhrec_thread.ready.connect(self.on_recommendations_computed)
             self.edhrec_thread.error_occurred.connect(lambda e: self.dashboard.status_label.setText(f"EDHREC Error: {e}"))
             self.edhrec_thread.start()
