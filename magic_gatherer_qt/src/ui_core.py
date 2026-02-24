@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                             QTextEdit, QGraphicsDropShadowEffect, QFrame, QSizePolicy)
+                             QTextEdit, QGraphicsDropShadowEffect, QFrame, QSizePolicy, QMainWindow)
 from PyQt5.QtGui import QColor, QFont, QPixmap, QPainter
-from PyQt5.QtCore import Qt, QPropertyAnimation, QVariantAnimation, pyqtProperty, QEasingCurve, QSortFilterProxyModel
+from PyQt5.QtCore import Qt, QPropertyAnimation, QVariantAnimation, pyqtProperty, QEasingCurve, QSortFilterProxyModel, QObject, QTimer, QPoint, QEvent
 
 class FuzzyProxyModel(QSortFilterProxyModel):
     def filterAcceptsRow(self, source_row, source_parent):
@@ -118,11 +118,37 @@ class CrossfadeImage(QLabel):
         self.anim.setStartValue(0.0)
         self.anim.setEndValue(1.0)
         self.anim.valueChanged.connect(self._set_alpha)
+        
+        # Skeleton animation
+        self.skeleton_opacity = 1.0
+        self.skeleton_fade_out = True
+        self.skeleton_timer = QTimer(self)
+        self.skeleton_timer.timeout.connect(self._animate_skeleton)
+        self.skeleton_timer.start(50)
+
+    def _animate_skeleton(self):
+        if not self.current_pixmap.isNull():
+            if self.skeleton_timer.isActive():
+                self.skeleton_timer.stop()
+            return
+            
+        if self.skeleton_fade_out:
+            self.skeleton_opacity -= 0.05
+            if self.skeleton_opacity <= 0.3:
+                self.skeleton_fade_out = False
+        else:
+            self.skeleton_opacity += 0.05
+            if self.skeleton_opacity >= 1.0:
+                self.skeleton_fade_out = True
+        self.update()
 
     def set_image(self, pixmap: QPixmap):
         if self.current_pixmap.isNull():
             self.current_pixmap = pixmap
-            self.setPixmap(self.current_pixmap)
+            # Fade from skeleton to the first image
+            self.next_pixmap = pixmap
+            self.current_pixmap = QPixmap() # keep it null to draw skeleton underneath 
+            self.anim.start()
         else:
             self.next_pixmap = pixmap
             self.anim.start()
@@ -132,31 +158,130 @@ class CrossfadeImage(QLabel):
         self.update()
         if value == 1.0:
             self.current_pixmap = self.next_pixmap
-            self.setPixmap(self.current_pixmap)
             self.alpha = 0.0
 
     def paintEvent(self, event):
-        if not self.current_pixmap.isNull():
-            painter = QPainter(self)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)
+        
+        # Draw skeleton if applicable
+        if self.current_pixmap.isNull() or self.alpha > 0 and self.current_pixmap.isNull():
+            color = QColor("#2a2a2a")
+            color.setAlphaF(self.skeleton_opacity)
+            painter.setBrush(color)
+            painter.setPen(Qt.NoPen)
+            painter.drawRoundedRect(self.rect().adjusted(10, 10, -10, -10), 12, 12)
+            
+        if not self.current_pixmap.isNull() and self.alpha < 1.0:
             
             if self.alpha > 0 and not self.next_pixmap.isNull():
-                # Draw old image fading out
-                painter.setOpacity(1.0 - self.alpha)
-                scaled_curr = self.current_pixmap.scaled(self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                x_curr = (self.width() - scaled_curr.width()) // 2
-                y_curr = (self.height() - scaled_curr.height()) // 2
-                painter.drawPixmap(x_curr, y_curr, scaled_curr)
+                # Fade out old image if it existed
+                if not self.current_pixmap.isNull():
+                    painter.setOpacity(1.0 - self.alpha)
+                    scaled_curr = self.current_pixmap.scaled(self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                    x_curr = (self.width() - scaled_curr.width()) // 2
+                    y_curr = (self.height() - scaled_curr.height()) // 2
+                    painter.drawPixmap(x_curr, y_curr, scaled_curr)
                 
-                # Draw new image fading in
+                # Fade in new image
                 painter.setOpacity(self.alpha)
                 scaled_next = self.next_pixmap.scaled(self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
                 x_next = (self.width() - scaled_next.width()) // 2
                 y_next = (self.height() - scaled_next.height()) // 2
                 painter.drawPixmap(x_next, y_next, scaled_next)
             else:
+                # Normal solid drawing
                 scaled_curr = self.current_pixmap.scaled(self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
                 x_curr = (self.width() - scaled_curr.width()) // 2
                 y_curr = (self.height() - scaled_curr.height()) // 2
                 painter.drawPixmap(x_curr, y_curr, scaled_curr)
         else:
             super().paintEvent(event)
+
+class CardPreviewWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Card Preview")
+        self.setWindowFlags(Qt.ToolTip | Qt.FramelessWindowHint)
+        self.resize(300, 420)
+        self.setStyleSheet(f"background-color: {CANVAS_BG}; border: 2px solid {ACCENT_COLOR}; border-radius: 8px;")
+        
+        self.image_label = QLabel()
+        self.image_label.setAlignment(Qt.AlignCenter)
+        self.setCentralWidget(self.image_label)
+        
+    def set_pixmap(self, pixmap):
+        scaled = pixmap.scaled(self.width() - 8, self.height() - 8, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        self.image_label.setPixmap(scaled)
+        
+    def resizeEvent(self, event):
+        if self.image_label.pixmap():
+            scaled = self.image_label.pixmap().scaled(self.width() - 8, self.height() - 8, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.image_label.setPixmap(scaled)
+        super().resizeEvent(event)
+
+class HoverPreviewManager(QObject):
+    """
+    Attaches to a QListView. Shows a frameless card preview near the mouse 
+    after hovering over an item for 500ms. Automatically hides when mouse leaves.
+    """
+    def __init__(self, list_view, fetch_callback, parent=None):
+        super().__init__(parent)
+        self.list_view = list_view
+        self.fetch_callback = fetch_callback
+        
+        self.preview_window = CardPreviewWindow()
+        self.hover_timer = QTimer(self)
+        self.hover_timer.setSingleShot(True)
+        self.hover_timer.timeout.connect(self._fetch_highlighted_image)
+        
+        self.current_highlight = ""
+        self.last_global_pos = QPoint()
+        
+        # Install event filter to track mouse movements easily
+        self.list_view.viewport().installEventFilter(self)
+        self.list_view.viewport().setMouseTracking(True)
+        self.list_view.setMouseTracking(True)
+        
+    def eventFilter(self, obj, event):
+        if obj is self.list_view.viewport():
+            if event.type() == QEvent.MouseMove:
+                self._handle_mouse_move(event)
+            elif event.type() == QEvent.Leave:
+                self._handle_mouse_leave()
+        return super().eventFilter(obj, event)
+        
+    def _handle_mouse_move(self, event):
+        pos = event.pos()
+        index = self.list_view.indexAt(pos)
+        self.last_global_pos = event.globalPos()
+        
+        if index.isValid():
+            name = self.list_view.model().data(index, Qt.DisplayRole)
+            if name != self.current_highlight:
+                self.current_highlight = name
+                self.preview_window.hide()
+                self.hover_timer.start(500)
+        else:
+            self._handle_mouse_leave()
+
+    def _handle_mouse_leave(self):
+        self.current_highlight = ""
+        self.hover_timer.stop()
+        self.preview_window.hide()
+
+    def _fetch_highlighted_image(self):
+        if self.current_highlight:
+            self.fetch_callback(self.current_highlight, self)
+
+    def display_image(self, pixmap):
+        self.preview_window.set_pixmap(pixmap)
+        
+        # Position near the cursor but ensure it fits on screen
+        tooltip_pos = self.last_global_pos + QPoint(15, 15)
+        self.preview_window.move(tooltip_pos)
+        
+        if not self.preview_window.isVisible():
+            self.preview_window.setAttribute(Qt.WA_ShowWithoutActivating)
+            self.preview_window.show()

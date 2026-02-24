@@ -1,10 +1,14 @@
 import re
+import logging
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                              QProgressBar, QTextEdit, QPushButton, QListView, QSpinBox, QLineEdit, QCompleter)
-from PyQt5.QtCore import pyqtSignal, Qt, QThread
-from PyQt5.QtGui import QStandardItemModel, QStandardItem
-from ui_core import StyledPane, HeaderLabel, PANE_BG, FuzzyProxyModel, ACCENT_COLOR
+from PyQt5.QtCore import pyqtSignal, Qt, QThread, QStringListModel
+from PyQt5.QtGui import QStandardItemModel, QStandardItem, QPixmap
+from ui_core import StyledPane, HeaderLabel, PANE_BG, FuzzyProxyModel, ACCENT_COLOR, HoverPreviewManager
 from api import safe_post
+
+logging.basicConfig(level=logging.ERROR, filename='magicgatherer_error.log', filemode='a',
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 def heuristic_categorize(card):
     type_line = card.get("type_line", "").lower()
@@ -270,21 +274,35 @@ class EdhrecComparisonThread(QThread):
             data = r.json()
             cardlists = data.get("container", {}).get("json_dict", {}).get("cardlists", [])
             
-            staples = []
+            top_staples = []
+            all_edhrec_cards = []
             for lst in cardlists:
-                if lst.get("header") in ["High Synergy Cards", "Top Cards", "New Cards", "Game Changers"]:
-                    staples.extend([c.get("name") for c in lst.get("cardviews", [])])
+                category_cards = [c.get("name") for c in lst.get("cardviews", [])]
+                all_edhrec_cards.extend(category_cards)
+                if lst.get("header") in ["High Synergy Cards", "Top Cards"]:
+                    top_staples.extend(category_cards)
             
-            staples = list(set([s for s in staples if s]))
+            # Remove duplicates
+            top_staples = list(set([s for s in top_staples if s]))
+            all_edhrec_cards = list(set([s for s in all_edhrec_cards if s]))
             
             adds = []
-            for st in staples:
+            for st in top_staples:
                 if st.lower() not in self.deck_names and "Land" not in st:
                     adds.append(st)
                     
             cuts = []
+            # Define basic lands to strictly exclude from cuts
+            basics = ["plains", "island", "swamp", "mountain", "forest", "wastes", 
+                      "snow-covered plains", "snow-covered island", "snow-covered swamp", 
+                      "snow-covered mountain", "snow-covered forest"]
+                      
+            edhrec_lower = [s.lower() for s in all_edhrec_cards]
             for d in self.deck_names:
-                if d not in [s.lower() for s in staples] and "basic" not in d.lower():
+                clean_name = d.strip().lower()
+                # Determine if it's a basic land (can have leading/trailing garbage from parser sometimes)
+                is_basic = any(b in clean_name for b in basics)
+                if not is_basic and clean_name not in edhrec_lower:
                     cuts.append(d.title())
                     
             self.ready.emit(adds[:50], cuts)
@@ -293,7 +311,7 @@ class EdhrecComparisonThread(QThread):
 
 
 class DeckDoctorWindow(QMainWindow):
-    send_to_exporter = pyqtSignal(str)
+    send_to_exporter = pyqtSignal(str, str) # text, commander_name
 
     def __init__(self, initial_decklist="", commanders_model=None):
         super().__init__()
@@ -430,7 +448,7 @@ class DeckDoctorWindow(QMainWindow):
                 background-color: #0056b3;
             }
         """)
-        self.btn_send_main.clicked.connect(lambda: self.send_to_exporter.emit(self.paste_area.toPlainText()))
+        self.btn_send_main.clicked.connect(lambda: self.send_to_exporter.emit(self.paste_area.toPlainText(), self.cmd_input.text().strip()))
         left_layout.addWidget(self.btn_send_main)
         
         # Center Panel (Metrics)
@@ -440,8 +458,6 @@ class DeckDoctorWindow(QMainWindow):
         right_panel = StyledPane()
         right_layout = QVBoxLayout(right_panel)
         
-        from PyQt5.QtCore import QStringListModel
-        
         right_layout.addWidget(HeaderLabel("Recommended Additions (EDHREC Staples)"))
         self.list_add = QListView()
         self.list_add.setStyleSheet("background-color: #121212; color: #A3C095; border: 1px solid #2C2C2C; padding: 5px;")
@@ -449,6 +465,9 @@ class DeckDoctorWindow(QMainWindow):
         self.list_add.setModel(self.model_add)
         self.list_add.doubleClicked.connect(self.on_recommendation_double_clicked)
         right_layout.addWidget(self.list_add, stretch=1)
+        
+        # Add Hover Tooltip Manager for Additions
+        self.preview_manager_add = HoverPreviewManager(self.list_add, self._trigger_hover_fetch)
         
         right_layout.addWidget(HeaderLabel("Potential Cuts (Non-Synergistic)"))
         self.list_cuts = QListView()
@@ -458,9 +477,23 @@ class DeckDoctorWindow(QMainWindow):
         self.list_cuts.doubleClicked.connect(self.on_cut_double_clicked)
         right_layout.addWidget(self.list_cuts, stretch=1)
         
+        # Add Hover Tooltip Manager for Cuts
+        self.preview_manager_cuts = HoverPreviewManager(self.list_cuts, self._trigger_hover_fetch)
+        
         layout.addWidget(left_panel, stretch=1)
         layout.addWidget(self.dashboard, stretch=1)
         layout.addWidget(right_panel, stretch=1)
+        
+    def _trigger_hover_fetch(self, name, manager):
+        from image_fetcher import ImageFetchThread
+        
+        if hasattr(self, 'img_thread') and self.img_thread.isRunning():
+            self.img_thread.quit()
+            
+        self.img_thread = ImageFetchThread(card_name=name)
+        # Fix crash: Convert the string filepath to a QPixmap before displaying
+        self.img_thread.image_ready.connect(lambda filepath: manager.display_image(QPixmap(filepath)))
+        self.img_thread.start()
         
     def request_analysis(self):
         text = self.paste_area.toPlainText()
@@ -470,6 +503,12 @@ class DeckDoctorWindow(QMainWindow):
             
         self.dashboard.status_label.setText("Fetching data...")
         self.dashboard.reset_metrics()
+        
+        # Safely shut down existing threads
+        if hasattr(self, 'analysis_thread') and self.analysis_thread.isRunning():
+            self.analysis_thread.quit()
+        if hasattr(self, 'edhrec_thread') and self.edhrec_thread.isRunning():
+            self.edhrec_thread.quit()
         
         if text.strip():
             self.analysis_thread = DeckAnalysisThread(text)
@@ -492,6 +531,10 @@ class DeckDoctorWindow(QMainWindow):
         if cmd_name:
             self.dashboard.status_label.setText(f"Comparing deck to EDHREC for {cmd_name}...")
             deck_names = [c.get("name") for c in cards]
+            
+            if hasattr(self, 'edhrec_thread') and self.edhrec_thread.isRunning():
+                self.edhrec_thread.quit()
+                
             self.edhrec_thread = EdhrecComparisonThread(cmd_name, deck_names)
             self.edhrec_thread.ready.connect(self.on_recommendations_computed)
             self.edhrec_thread.error_occurred.connect(lambda e: self.dashboard.status_label.setText(f"EDHREC Error: {e}"))

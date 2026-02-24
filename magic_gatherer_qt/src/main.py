@@ -1,5 +1,7 @@
 import sys
 import os
+import logging
+import traceback
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import json
 import time
@@ -12,7 +14,7 @@ from PyQt5.QtWidgets import (QApplication, QSplashScreen, QMainWindow, QWidget,
                              QDialog, QTabWidget, QSpinBox, QDoubleSpinBox)
 from PyQt5.QtGui import QPixmap, QStandardItemModel, QStandardItem, QCursor
 from PyQt5.QtCore import QThread, pyqtSignal, Qt, QPoint, QTimer
-from ui_core import StyledPane, HeaderLabel, BodyLabel, ErrorTicker, CrossfadeImage, PANE_BG, CANVAS_BG, ACCENT_COLOR, FuzzyProxyModel
+from ui_core import StyledPane, HeaderLabel, BodyLabel, ErrorTicker, CrossfadeImage, PANE_BG, CANVAS_BG, ACCENT_COLOR, FuzzyProxyModel, HoverPreviewManager
 from discovery import DiscoveryWidget
 from image_fetcher import ImageFetchThread
 from deck_doctor import DeckDoctorWindow
@@ -53,10 +55,23 @@ class SmartChecksumThread(QThread):
             data = resp.json()
             total_cards = data.get("total_cards", 0)
             
-            # 2. Compare to local commanders.json
+            # 2. Compare to local commanders.json and check 7-day TTL
             local_total = -1
             commanders = []
             if COMMANDERS_JSON_PATH.exists():
+                file_mtime = COMMANDERS_JSON_PATH.stat().st_mtime
+                # 604800 seconds = 7 days
+                if time.time() - file_mtime < 604800:
+                    with open(COMMANDERS_JSON_PATH, "r", encoding="utf-8") as f:
+                        cached_data = json.load(f)
+                        commanders = cached_data.get("data", [])
+                        if commanders:
+                            self.progress_update.emit("Cache is still fresh (< 7 days).")
+                            time.sleep(0.5)
+                            self.fetch_complete.emit(commanders)
+                            return
+                            
+                # If TTL expired or missing, still try to load local_total for total_cards match
                 with open(COMMANDERS_JSON_PATH, "r", encoding="utf-8") as f:
                     cached_data = json.load(f)
                     local_total = cached_data.get("total_cards", -1)
@@ -433,26 +448,7 @@ class PdfSettingsDialog(QDialog):
             "dpi_preset": self.combo_dpi.currentText()
         }
 
-class CardPreviewWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("Card Preview")
-        self.resize(350, 500)
-        self.setStyleSheet(f"background-color: {CANVAS_BG};")
-        
-        self.image_label = QLabel()
-        self.image_label.setAlignment(Qt.AlignCenter)
-        self.setCentralWidget(self.image_label)
-        
-    def set_pixmap(self, pixmap):
-        scaled = pixmap.scaled(self.width() - 32, self.height() - 32, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        self.image_label.setPixmap(scaled)
-        
-    def resizeEvent(self, event):
-        if self.image_label.pixmap():
-            scaled = self.image_label.pixmap().scaled(self.width() - 32, self.height() - 32, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            self.image_label.setPixmap(scaled)
-        super().resizeEvent(event)
+
 
 class DiscoveryWindow(QMainWindow):
     def __init__(self, parent=None):
@@ -475,10 +471,10 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(f"background-color: {CANVAS_BG};")
         
         # Auxiliary Windows
-        self.preview_window = CardPreviewWindow()
         self.discovery_window = DiscoveryWindow(self)
         self.discovery_window.widget.preview_requested.connect(self.on_preview_requested)
         self.discovery_window.widget.build_requested.connect(self.on_build_requested)
+        self.discovery_window.widget.export_requested.connect(self.on_export_requested)
         
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
@@ -564,18 +560,27 @@ class MainWindow(QMainWindow):
         self.completer.setCompletionMode(QCompleter.PopupCompletion)
         self.completer.setCaseSensitivity(Qt.CaseInsensitive)
         popup = QListView()
-        popup.setStyleSheet(f"QListView {{ background-color: {PANE_BG}; color: white; border: 1px solid #2C2C2C; selection-background-color: #4C4C4C; padding: 4px; }}")
+        popup.setStyleSheet(f"""
+            QListView {{
+                background-color: {PANE_BG};
+                color: white;
+                border: 1px solid #2C2C2C;
+                selection-background-color: #4C4C4C;
+                padding: 4px;
+            }}
+            QListView::item {{
+                font-weight: 600;
+                padding: 6px;
+                color: rgba(255, 255, 255, 200);
+            }}
+        """)
         self.completer.setPopup(popup)
         self.search_input.setCompleter(self.completer)
         self.search_input.textChanged.connect(self.update_filter)
         self.completer.activated.connect(self.on_completer_activated)
-        self.completer.highlighted.connect(self.on_completer_highlighted)
         
-        # Debounce timer for fetching highlighted images
-        self.hover_timer = QTimer(self)
-        self.hover_timer.setSingleShot(True)
-        self.hover_timer.timeout.connect(self.fetch_highlighted_image)
-        self.current_highlight = ""
+        # Attach HoverPreviewManager to the completer list view
+        self.preview_manager = HoverPreviewManager(popup, self.fetch_image)
         
         row_edhrec.addWidget(self.search_input, stretch=1)
         
@@ -805,27 +810,13 @@ class MainWindow(QMainWindow):
         self.fetch_image(name)
         
     def on_completer_activated(self, text):
-        self.preview_window.hide()
+        self.preview_manager.preview_window.hide()
         self.statusBar().showMessage(f"Selected: {text}", 3000)
         
-    def on_completer_highlighted(self, text):
-        # Trigger Debounced Fetch
-        self.current_highlight = text
-        self.hover_timer.start(500)  # Wait 500ms
-        
-    def fetch_highlighted_image(self):
-        if self.current_highlight:
-            self.fetch_image(self.current_highlight)
-            
     def display_image(self, filepath):
         pixmap = QPixmap(filepath)
-        self.preview_window.set_pixmap(pixmap)
+        self.preview_manager.display_image(pixmap)
         
-        # Show window, trying not to steal complete focus from typing
-        if not self.preview_window.isVisible():
-            self.preview_window.setAttribute(Qt.WA_ShowWithoutActivating)
-            self.preview_window.show()
-            
         self.statusBar().showMessage("Artwork preview loaded.", 2000)
         
     def on_launch_deckroller(self):
@@ -837,11 +828,21 @@ class MainWindow(QMainWindow):
         self.fetch_image(name)
         
     def on_build_requested(self, name):
+        # Explicitly "Send to Doctor" Route
         self.search_input.setText(name)
+        self.radio_edhrec.setChecked(True)
         self.on_launch_deckdoctor()
         self.deck_doctor_window.cmd_input.setText(name)
         self.deck_doctor_window.request_analysis()
         self.statusBar().showMessage(f"Sent {name} to the Deck Doctor!", 3000)
+        self.discovery_window.hide()
+        
+    def on_export_requested(self, name):
+        # Explicitly "Send to Exporter" Route
+        self.search_input.setText(name)
+        self.radio_edhrec.setChecked(True)
+        self.statusBar().showMessage(f"Sent {name} to Exporter! Click 'Gather' to begin.", 3000)
+        self.discovery_window.hide()
         
     # --- Export / Gather Logic ---
     def toggle_pdf_options(self):
@@ -881,13 +882,16 @@ class MainWindow(QMainWindow):
         )
 
     def on_launch_deckdoctor(self):
-        # Prevent crash from rapid clicking replacing the underlying C++ object
-        if hasattr(self, 'deck_doctor_window') and self.deck_doctor_window.isVisible():
+        raw_text = self.paste_area.toPlainText()
+        
+        # Safely reuse the existing DeckDoctorWindow to avoid destroying active QThreads
+        if hasattr(self, 'deck_doctor_window'):
+            if not self.deck_doctor_window.isVisible():
+                self.deck_doctor_window.paste_area.setText(raw_text)
+            self.deck_doctor_window.show()
             self.deck_doctor_window.activateWindow()
             return
             
-        raw_text = self.paste_area.toPlainText()
-        
         self.deck_doctor_window = DeckDoctorWindow(initial_decklist=raw_text, commanders_model=self.source_model)
         self.deck_doctor_window.dashboard.gap_filler_requested.connect(self.on_gap_filler_requested)
         self.deck_doctor_window.send_to_exporter.connect(self.on_receive_from_doctor)
@@ -898,8 +902,11 @@ class MainWindow(QMainWindow):
         self.radio_edhrec.setChecked(True)
         self.statusBar().showMessage(f"Loaded Gap Filler Query: {query}", 5000)
 
-    def on_receive_from_doctor(self, text):
+    def on_receive_from_doctor(self, text, commander_name=""):
         self.paste_area.setText(text)
+        if commander_name:
+            self.search_input.setText(commander_name)
+            self.radio_edhrec.setChecked(True)
         self.statusBar().showMessage("Received updated decklist from Deck Doctor!", 5000)
         
     def on_gather_clicked(self):
@@ -914,10 +921,7 @@ class MainWindow(QMainWindow):
         if not save_dir:
             return
             
-        pad_px = 75
-        if "0" in pad_text: pad_px = 0
-        elif "150" in pad_text: pad_px = 150
-            
+
         fmt = "paper"
         if self.radio_arena.isChecked(): fmt = "arena"
         elif self.radio_mtgo.isChecked(): fmt = "mtgo"
@@ -968,7 +972,10 @@ class MainWindow(QMainWindow):
         self.gather_worker.start()
         self.statusBar().showMessage("Gathering in background...", 3000)
             
-    def fetch_image(self, card_name):
+    def fetch_image(self, card_name, manager_ref=None):
+        if manager_ref:
+            self.preview_manager = manager_ref # Update current active manager
+
         # Cancel any previous rapid fetch threads
         if hasattr(self, 'img_thread') and self.img_thread.isRunning():
             self.img_thread.quit()
@@ -977,8 +984,20 @@ class MainWindow(QMainWindow):
         self.img_thread.image_ready.connect(self.display_image)
         self.img_thread.start()
 
+def exception_hook(exctype, value, tb):
+    """Global exception handler to capture UI crashes in the log."""
+    logging.error("Uncaught exception", exc_info=(exctype, value, tb))
+    sys._excepthook(exctype, value, tb)
+    
+sys._excepthook = sys.excepthook
+sys.excepthook = exception_hook
+
 def main():
     app = QApplication(sys.argv)
+    
+    # Configure global logging
+    logging.basicConfig(level=logging.ERROR, filename='magicgatherer_error.log', filemode='a',
+                        format='%(asctime)s - %(levelname)s - %(message)s')
     
     # Setup Splash Screen
     logo_path = Path(__file__).resolve().parent.parent / "logo.png"
