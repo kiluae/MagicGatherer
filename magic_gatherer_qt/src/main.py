@@ -1075,15 +1075,39 @@ sys.excepthook = exception_hook
 def main():
     app = QApplication(sys.argv)
     
+    # ── Force dark theme on every platform (fixes black-on-grey Windows bug) ──
+    from PyQt5.QtGui import QPalette, QColor
+    dark_palette = QPalette()
+    dark_palette.setColor(QPalette.Window,          QColor(28,  28,  30 ))
+    dark_palette.setColor(QPalette.WindowText,      QColor(230, 230, 230))
+    dark_palette.setColor(QPalette.Base,            QColor(18,  18,  18 ))
+    dark_palette.setColor(QPalette.AlternateBase,   QColor(35,  35,  35 ))
+    dark_palette.setColor(QPalette.ToolTipBase,     QColor(28,  28,  30 ))
+    dark_palette.setColor(QPalette.ToolTipText,     QColor(230, 230, 230))
+    dark_palette.setColor(QPalette.Text,            QColor(230, 230, 230))
+    dark_palette.setColor(QPalette.Button,          QColor(44,  44,  46 ))
+    dark_palette.setColor(QPalette.ButtonText,      QColor(230, 230, 230))
+    dark_palette.setColor(QPalette.BrightText,      QColor(255, 255, 255))
+    dark_palette.setColor(QPalette.Link,            QColor(42,  130, 218))
+    dark_palette.setColor(QPalette.Highlight,       QColor(42,  130, 218))
+    dark_palette.setColor(QPalette.HighlightedText, QColor(255, 255, 255))
+    dark_palette.setColor(QPalette.Disabled, QPalette.Text,       QColor(120, 120, 120))
+    dark_palette.setColor(QPalette.Disabled, QPalette.ButtonText, QColor(120, 120, 120))
+    app.setPalette(dark_palette)
+    app.setStyle("Fusion")
+    
     # Configure global logging
     logging.basicConfig(level=logging.ERROR, filename='magicgatherer_error.log', filemode='a',
                         format='%(asctime)s - %(levelname)s - %(message)s')
     
-    # Setup Splash Screen
-    logo_path = Path(__file__).resolve().parent.parent / "logo.png"
+    # Setup Splash Screen — works both frozen (PyInstaller) and in source
+    if getattr(sys, 'frozen', False):
+        base_dir = Path(sys._MEIPASS)
+    else:
+        base_dir = Path(__file__).resolve().parent.parent
+    logo_path = base_dir / "logo.png"
     splash_pixmap = QPixmap(str(logo_path))
     if splash_pixmap.isNull():
-        # Fallback if image not found locally
         splash_pixmap = QPixmap(400, 300)
         splash_pixmap.fill(Qt.black)
         
