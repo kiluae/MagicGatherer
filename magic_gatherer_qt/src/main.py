@@ -230,29 +230,44 @@ class GatherWorker(QThread):
             def log_wrap(msg): self.log_added.emit(msg)
             def prog_wrap(val): self.progress_made.emit(val)
 
-            # Use the shared logic
-            gather_cards(
-                save_dir=self.save_dir,
-                source="paste", # Source is redundant for raw data worker, but needed by logic
-                raw_paste="", 
-                file_path="", 
-                edhrec_cmd="",
-                format_pref=self.options.get("format_filter", "paper"),
-                options=self.options,
-                log_cb=log_wrap,
-                progress_cb=prog_wrap,
-                pdf_config=self.options.get("pdf_settings")
-            )
-            
-            # Post-logic cleanup: Arena clipboard
-            if self.options.get("arena"):
-                arena_str = generate_arena_clipboard(self.deck_data)
-                QApplication.clipboard().setText(arena_str)
-                self.log_added.emit("MTG Arena string copied to clipboard!")
+            # deck_data is already parsed Scryfall card dicts — export directly
+            opts = self.options
+            save_dir = self.save_dir
+            prefix = self.prefix
+            save_dir.mkdir(parents=True, exist_ok=True)
 
+            from exporters import (
+                export_json, export_csv, export_mtgo_dek,
+                export_images, export_pdf, generate_arena_clipboard, sanitize_filename
+            )
+            safe_prefix = sanitize_filename(prefix)
+
+            if opts.get("json"):
+                export_json(self.deck_data, save_dir, safe_prefix)
+                log_wrap("JSON Exported.")
+            if opts.get("csv"):
+                export_csv(self.deck_data, save_dir, safe_prefix)
+                log_wrap("CSV Exported.")
+            if opts.get("mtgo"):
+                export_mtgo_dek(self.deck_data, save_dir / f"{safe_prefix}.dek")
+                log_wrap("MTGO .dek Exported.")
+            if opts.get("arena"):
+                arena_str = generate_arena_clipboard(self.deck_data)
+                from PyQt5.QtWidgets import QApplication
+                QApplication.clipboard().setText(arena_str)
+                log_wrap("MTG Arena string copied to clipboard!")
+
+            if opts.get("img") or opts.get("pdf"):
+                export_images(self.deck_data, save_dir, safe_prefix, log_wrap, prog_wrap, 20, 80)
+                if opts.get("pdf"):
+                    export_pdf(self.deck_data, save_dir, safe_prefix, log_wrap, opts.get("pdf_settings"))
+                    log_wrap("PDF Proxies Generated.")
+
+            prog_wrap(100.0)
             self.finished_ok.emit()
         except Exception as e:
             self.error_occurred.emit(str(e))
+
 
 def create_groupbox(title: str) -> QGroupBox:
     gb = QGroupBox(title)
@@ -884,42 +899,50 @@ class MainWindow(QMainWindow):
 
     def on_launch_tui(self):
         import subprocess
-        import os
         import platform
         from pathlib import Path
 
-        # Correct path for v3.0 TUI
         try:
-            script_path = Path(__file__).resolve().parent / "tui" / "app.py"
-            if not script_path.exists():
-                self.statusBar().showMessage(f"TUI not found at {script_path}", 5000)
-                return
+            frozen = getattr(sys, 'frozen', False)
 
-            python_exe = "python3"
-            
-            # Get absolute path to src to inject into PYTHONPATH
-            src_dir = str(Path(__file__).resolve().parent)
-            
-            if platform.system() == "Darwin":
-                # macOS: Spawn in a new Terminal window using osascript
-                # We also inject the PYTHONPATH inside the script
-                cmd = f'export PYTHONPATH=\"{src_dir}:$PYTHONPATH\" && {python_exe} \"{script_path}\"'
-                applescript = f'''
-                tell application "Terminal"
-                    do script "{cmd}"
-                    activate
-                end tell
-                '''
-                subprocess.Popen(["osascript", "-e", applescript])
-                self.statusBar().showMessage("Launching TUI in Terminal...", 3000)
-            elif platform.system() == "Windows":
-                # Windows: Use 'start cmd' to pop a new window
-                cmd_str = f'set PYTHONPATH={src_dir};%PYTHONPATH% && {python_exe} "{script_path}"'
-                subprocess.Popen(f'start cmd /c "{cmd_str}"', shell=True)
+            if platform.system() == "Windows":
+                if frozen:
+                    exe_dir = Path(sys.executable).parent
+                    tui_exe = exe_dir / "MagicGathererTUI.exe"
+                    if tui_exe.exists():
+                        subprocess.Popen([str(tui_exe)], creationflags=subprocess.CREATE_NEW_CONSOLE)
+                        self.statusBar().showMessage("Launching TUI...", 3000)
+                    else:
+                        self.statusBar().showMessage(
+                            "TUI not found. Place MagicGathererTUI.exe next to MagicGatherer.exe", 6000)
+                    return
+                script_path = Path(__file__).resolve().parent / "tui" / "app.py"
+                src_dir = str(Path(__file__).resolve().parent)
+                if not script_path.exists():
+                    self.statusBar().showMessage(f"TUI script not found: {script_path}", 5000)
+                    return
+                subprocess.Popen(f'start cmd /k "set PYTHONPATH={src_dir};%PYTHONPATH% && python \"{script_path}\""',
+                                 shell=True)
                 self.statusBar().showMessage("Launching TUI...", 3000)
+
+            elif platform.system() == "Darwin":
+                script_path = Path(__file__).resolve().parent / "tui" / "app.py"
+                src_dir = str(Path(__file__).resolve().parent)
+                if not script_path.exists():
+                    self.statusBar().showMessage(f"TUI not found at {script_path}", 5000)
+                    return
+                cmd = f'export PYTHONPATH="{src_dir}:$PYTHONPATH" && python3 "{script_path}"'
+                subprocess.Popen(["osascript", "-e",
+                                  f'tell application "Terminal" to do script "{cmd}"'])
+                self.statusBar().showMessage("Launching TUI in Terminal...", 3000)
+
             else:
-                # Linux: Try x-terminal-emulator
-                cmd_bash = f'export PYTHONPATH=\"{src_dir}:$PYTHONPATH\" && {python_exe} \"{script_path}\"'
+                script_path = Path(__file__).resolve().parent / "tui" / "app.py"
+                src_dir = str(Path(__file__).resolve().parent)
+                if not script_path.exists():
+                    self.statusBar().showMessage(f"TUI not found at {script_path}", 5000)
+                    return
+                cmd_bash = f'export PYTHONPATH="{src_dir}:$PYTHONPATH" && python3 "{script_path}"'
                 subprocess.Popen(["x-terminal-emulator", "-e", f"bash -c '{cmd_bash}'"])
                 self.statusBar().showMessage("Launching TUI...", 3000)
 
@@ -990,22 +1013,23 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Received updated decklist from Deck Doctor!", 5000)
         
     def on_gather_clicked(self):
-        raw_text = self.paste_area.toPlainText()
+        raw_text = self.paste_area.toPlainText().strip()
         has_current_data = hasattr(self, 'current_decklist_data') and self.current_decklist_data
-        
-        if not has_current_data and not raw_text.strip():
-            self.statusBar().showMessage("Please use the Discovery search or paste a decklist first.", 3000)
+        edhrec_cmd = self.search_input.text().strip() if hasattr(self, 'radio_edhrec') and self.radio_edhrec.isChecked() else ""
+
+        # Validate: need at least one source of cards
+        if not has_current_data and not raw_text and not edhrec_cmd:
+            self.statusBar().showMessage("Please enter a commander (EDHREC), paste a decklist, or complete a Discovery search first.", 4000)
             return
-            
+
         save_dir = QFileDialog.getExistingDirectory(self, "Select Output Directory")
         if not save_dir:
             return
-            
 
         fmt = "paper"
         if self.radio_arena.isChecked(): fmt = "arena"
         elif self.radio_mtgo.isChecked(): fmt = "mtgo"
-            
+
         self.export_options = {
             "json": self.chk_json.isChecked(),
             "csv": self.chk_csv.isChecked(),
@@ -1017,21 +1041,48 @@ class MainWindow(QMainWindow):
             "format_filter": fmt,
             "pdf_settings": self.pdf_settings_cache
         }
-        
+
         self.export_prefix = "Gathered_Deck"
-        if self.search_input.text():
+        if self.search_input.text().strip():
             import re
-            self.export_prefix = re.sub(r'[\\/*?:"<>|]', "", self.search_input.text())
-        
+            self.export_prefix = re.sub(r'[\\/*?:"<>|]', "", self.search_input.text().strip())
+
         if has_current_data:
             self.start_gather_worker(self.current_decklist_data)
+        elif edhrec_cmd:
+            # EDHREC source: build deck from commander name via logic.py
+            self.statusBar().showMessage(f"Fetching EDHREC deck for {edhrec_cmd}...", 3000)
+            def _on_edhrec_cards(cards, _):
+                self.start_gather_worker(cards)
+            self.analysis_thread = DeckAnalysisThread(edhrec_cmd)
+            # Use EDHREC mode by patching the input slightly (prefix with !edhrec:)
+            # Actually call gather_cards directly in a thread for EDHREC
+            from logic import gather_cards as _gc
+            from pathlib import Path as _Path
+            import threading
+
+            def _edhrec_worker():
+                try:
+                    cards = []
+                    from logic import _fetch_edhrec_full_deck
+                    cards = _fetch_edhrec_full_deck(edhrec_cmd, lambda m: self.log_exec.append(m))
+                    if cards:
+                        # Switch back to main thread
+                        self.start_gather_worker(cards)
+                    else:
+                        self.statusBar().showMessage(f"No cards found for '{edhrec_cmd}' on EDHREC.", 4000)
+                except Exception as e:
+                    self.statusBar().showMessage(f"EDHREC fetch error: {e}", 5000)
+
+            threading.Thread(target=_edhrec_worker, daemon=True).start()
         else:
             self.statusBar().showMessage("Parsing pasted decklist before gathering...", 3000)
             self.analysis_thread = DeckAnalysisThread(raw_text)
             self.analysis_thread.cards_fetched.connect(lambda cards, cmdr: self.start_gather_worker(cards))
             self.analysis_thread.error_occurred.connect(lambda err: self.statusBar().showMessage(f"Parse Error: {err}"))
             self.analysis_thread.start()
-            
+
+
     def start_gather_worker(self, cards):
         if hasattr(self, 'gather_worker') and self.gather_worker.isRunning():
             return
@@ -1095,7 +1146,24 @@ def main():
     dark_palette.setColor(QPalette.Disabled, QPalette.ButtonText, QColor(120, 120, 120))
     app.setPalette(dark_palette)
     app.setStyle("Fusion")
-    
+    # QCheckBox indicators are invisible with the dark Fusion palette unless
+    # explicitly styled — the native indicator background becomes black.
+    app.setStyleSheet("""
+        QCheckBox::indicator {
+            width: 14px; height: 14px;
+            border: 2px solid #555;
+            border-radius: 3px;
+            background-color: #2C2C2C;
+        }
+        QCheckBox::indicator:checked {
+            background-color: #007AFF;
+            border-color: #007AFF;
+        }
+        QCheckBox::indicator:hover {
+            border-color: #007AFF;
+        }
+    """)
+
     # Configure global logging
     logging.basicConfig(level=logging.ERROR, filename='magicgatherer_error.log', filemode='a',
                         format='%(asctime)s - %(levelname)s - %(message)s')

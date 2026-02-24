@@ -17,7 +17,7 @@ jobs:
         include:
           - name: Windows
             os: windows-latest
-            artifact: MagicGatherer.exe
+            artifact: MagicGatherer-Windows.zip
           - name: macOS
             os: macos-latest
             artifact: MagicGatherer.app.zip
@@ -84,16 +84,13 @@ jobs:
             ICON_ARGS="--icon=icon.icns"
           fi
           # macOS MUST use --onedir (not --onefile) for PyQt5 to actually launch.
-          # --onefile silently fails to load Qt platform plugins on macOS.
+          # --collect-all PyQt5 is required to bundle libqcocoa.dylib and all
+          # Qt plugins; without it the app bounces on the dock and crashes.
           python3 -m PyInstaller \
             --onedir --windowed \
             --paths magic_gatherer_qt/src \
             --add-data "magic_gatherer_qt/logo.png:." \
-            --hidden-import PyQt5.sip \
-            --hidden-import PyQt5.QtCore \
-            --hidden-import PyQt5.QtGui \
-            --hidden-import PyQt5.QtWidgets \
-            --hidden-import PyQt5.QtPrintSupport \
+            --collect-all PyQt5 \
             --hidden-import pkg_resources \
             --hidden-import pkgutil \
             $ICON_ARGS \
@@ -112,6 +109,7 @@ jobs:
           else
             if [ -f "icon.png" ]; then ICON_ARGS="--icon=icon.png"; fi
           fi
+          # Main GUI executable
           pyinstaller \
             --onefile --windowed \
             --paths magic_gatherer_qt/src \
@@ -120,6 +118,33 @@ jobs:
             $ICON_ARGS \
             --name MagicGatherer \
             magic_gatherer_qt/src/main.py
+
+      - name: Build TUI Launcher (Windows only)
+        if: matrix.name == 'Windows'
+        shell: bash
+        run: |
+          if [ -f "icon.ico" ]; then ICON_ARGS="--icon=icon.ico"; else ICON_ARGS=""; fi
+          # Build the TUI as a separate console-mode executable so it can run
+          # in its own terminal window without blocking or needing system Python.
+          pyinstaller \
+            --onefile --console \
+            --paths magic_gatherer_qt/src \
+            --hidden-import pkgutil \
+            --hidden-import textual \
+            $ICON_ARGS \
+            --name MagicGathererTUI \
+            magic_gatherer_qt/src/tui/app.py
+
+      - name: Zip Windows Artifacts
+        if: matrix.name == 'Windows'
+        shell: bash
+        run: |
+          cd dist
+          # MagicGathererTUI.exe may not exist on first run - it's optional
+          TUI_FILE=""
+          [ -f MagicGathererTUI.exe ] && TUI_FILE="MagicGathererTUI.exe"
+          zip MagicGatherer-Windows.zip MagicGatherer.exe $TUI_FILE
+
 
       - name: Zip Artifact (macOS)
         if: matrix.name == 'macOS'
