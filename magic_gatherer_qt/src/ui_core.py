@@ -203,14 +203,17 @@ class CardPreviewWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Card Preview")
-        self.setWindowFlags(Qt.ToolTip | Qt.FramelessWindowHint)
+        # Set ALL flags at init time. Calling setWindowFlags after show() hides
+        # the window and requires an extra show(), causing the visible flicker.
+        self.setWindowFlags(Qt.ToolTip | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WA_ShowWithoutActivating)
         self.resize(300, 420)
         self.setStyleSheet(f"background-color: {CANVAS_BG}; border: 2px solid {ACCENT_COLOR}; border-radius: 8px;")
         
         self.image_label = QLabel()
         self.image_label.setAlignment(Qt.AlignCenter)
         self.setCentralWidget(self.image_label)
-        
+
     def set_pixmap(self, pixmap):
         if not pixmap or pixmap.isNull():
             return
@@ -323,16 +326,16 @@ class HoverPreviewManager(QObject):
             self.fetch_callback(self.current_highlight, self)
 
     def display_image(self, pixmap):
+        # Guard: if the mouse left before the image arrived, don't show anything
+        if not self.current_highlight:
+            return
         if not pixmap or pixmap.isNull():
             return
-            
+
         self.preview_window.set_pixmap(pixmap)
-        
-        # Position near the cursor but ensure it fits on screen
-        # We use global coordinates
+
         tooltip_pos = self.last_global_pos + QPoint(20, 20)
-        
-        # Ensure it doesn't go off screen
+
         try:
             from PyQt5.QtWidgets import QApplication
             screen = QApplication.primaryScreen().geometry()
@@ -340,13 +343,10 @@ class HoverPreviewManager(QObject):
                 tooltip_pos.setX(self.last_global_pos.x() - self.preview_window.width() - 20)
             if tooltip_pos.y() + self.preview_window.height() > screen.height():
                 tooltip_pos.setY(self.last_global_pos.y() - self.preview_window.height() - 20)
-        except:
+        except Exception:
             pass
-            
+
         self.preview_window.move(tooltip_pos)
-        
         if not self.preview_window.isVisible():
-            self.preview_window.setAttribute(Qt.WA_ShowWithoutActivating)
-            self.preview_window.setWindowFlags(Qt.ToolTip | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
             self.preview_window.show()
-            self.preview_window.raise_()
+        self.preview_window.raise_()
