@@ -5,7 +5,7 @@ on:
       - 'v*'
 
 permissions:
-  contents: write # CRITICAL FIX: Grants the token write access to upload Release files
+  contents: write
 
 jobs:
   build-standard:
@@ -28,15 +28,21 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
       - name: Install Ubuntu GUI Dependencies
         if: matrix.name == 'Ubuntu'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libxcb-shm0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-icccm4 libxcb-cursor0 libxcb-shape0
+          sudo apt-get install -y \
+            libxcb-shm0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0 \
+            libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-icccm4 \
+            libxcb-cursor0 libxcb-shape0
+
       - name: Install Python Requirements
         shell: bash
         run: |
@@ -49,53 +55,69 @@ jobs:
             pip install -r requirements.txt
             pip install pyinstaller
           fi
+
       - name: Generate Icons
         shell: bash
         run: |
-          python3 -m pip install Pillow
+          python3 -m pip install Pillow || pip install Pillow
           python3 -c "
-          import os, sys; from PIL import Image
-          if os.path.exists('icon.png'):
-              img = Image.open('icon.png')
+          import os; from PIL import Image
+          src = 'magic_gatherer_qt/logo.png' if os.path.exists('magic_gatherer_qt/logo.png') else 'icon.png'
+          if os.path.exists(src):
+              img = Image.open(src)
               w, h = img.size
               if w != h:
                   m = max(w, h)
                   sq = Image.new('RGBA', (m, m), (255,0,0,0))
                   sq.paste(img, ((m-w)//2, (m-h)//2))
                   img = sq
-              img.save('icon.ico', format='ICO', sizes=[(256,256), (128,128), (64,64), (32,32)])
+              img.save('icon.ico', format='ICO', sizes=[(256,256),(128,128),(64,64),(32,32)])
               img.save('icon.icns', format='ICNS')
           "
-      - name: Build with PyInstaller
+
+      - name: Build with PyInstaller (macOS)
+        if: matrix.name == 'macOS'
+        shell: bash
+        run: |
+          ICON_ARGS=""
+          if [ -f "icon.icns" ]; then
+            ICON_ARGS="--icon=icon.icns"
+          fi
+          python3 -m PyInstaller \
+            --onefile --windowed \
+            --paths magic_gatherer_qt/src \
+            --add-data "magic_gatherer_qt/logo.png:." \
+            --hidden-import pkgutil \
+            $ICON_ARGS \
+            --name MagicGatherer \
+            magic_gatherer_qt/src/main.py
+
+      - name: Build with PyInstaller (Windows/Linux)
+        if: matrix.name != 'macOS'
         shell: bash
         run: |
           ICON_ARGS=""
           DATA_SEP=":"
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             DATA_SEP=";"
-          fi
-          
-          if [ -f "icon.png" ]; then
-            if [ "${{ matrix.os }}" = "macos-latest" ] && [ -f "icon.icns" ]; then
-              ICON_ARGS="--icon=icon.icns --add-data icon.png${DATA_SEP}."
-            elif [ "${{ matrix.os }}" = "windows-latest" ] && [ -f "icon.ico" ]; then
-              ICON_ARGS="--icon=icon.ico --add-data icon.png${DATA_SEP}."
-            else
-              ICON_ARGS="--icon=icon.png --add-data icon.png${DATA_SEP}."
-            fi
-          fi
-          
-          if [ "${{ matrix.os }}" = "macos-latest" ]; then
-            python3 -m PyInstaller --onefile --windowed --paths . --hidden-import pkgutil $ICON_ARGS --name MagicGatherer src/main.py
+            if [ -f "icon.ico" ]; then ICON_ARGS="--icon=icon.ico"; fi
           else
-            pyinstaller --onefile --windowed --paths . --hidden-import pkgutil $ICON_ARGS --name MagicGatherer src/main.py
+            if [ -f "icon.png" ]; then ICON_ARGS="--icon=icon.png"; fi
           fi
+          pyinstaller \
+            --onefile --windowed \
+            --paths magic_gatherer_qt/src \
+            --add-data "magic_gatherer_qt/logo.png${DATA_SEP}." \
+            --hidden-import pkgutil \
+            $ICON_ARGS \
+            --name MagicGatherer \
+            magic_gatherer_qt/src/main.py
+
       - name: Zip Artifact (macOS)
         if: matrix.name == 'macOS'
         run: |
-          cd dist
-          zip -yr ${{ matrix.artifact }} MagicGatherer.app
-          cd ..
+          cd dist && zip -yr ${{ matrix.artifact }} MagicGatherer.app
+
       - name: Create Release and Upload
         uses: softprops/action-gh-release@v1
         with:
@@ -107,40 +129,52 @@ jobs:
     name: Build for Fedora
     runs-on: ubuntu-latest
     container: fedora:latest
+
     steps:
       - name: Install System Dependencies
-        run: dnf install -y git nodejs python3 python3-pip gcc xcb-util-cursor xcb-util-image xcb-util-keysyms xcb-util-renderutil xcb-util-wm libxkbcommon-x11
+        run: |
+          dnf install -y git nodejs python3 python3-pip gcc \
+            xcb-util-cursor xcb-util-image xcb-util-keysyms xcb-util-renderutil \
+            xcb-util-wm libxkbcommon-x11
 
       - name: Checkout Code
         uses: actions/checkout@v4
+
       - name: Install Python Requirements
         run: |
           python3 -m pip install --upgrade pip
           python3 -m pip install -r requirements.txt
           python3 -m pip install pyinstaller
+
       - name: Generate Icons
         run: |
-          python3 -m pip install Pillow
           python3 -c "
-          import os, sys; from PIL import Image
-          if os.path.exists('icon.png'):
-              img = Image.open('icon.png')
+          import os; from PIL import Image
+          src = 'magic_gatherer_qt/logo.png' if os.path.exists('magic_gatherer_qt/logo.png') else 'icon.png'
+          if os.path.exists(src):
+              img = Image.open(src)
               w, h = img.size
               if w != h:
                   m = max(w, h)
                   sq = Image.new('RGBA', (m, m), (255,0,0,0))
                   sq.paste(img, ((m-w)//2, (m-h)//2))
                   img = sq
-              img.save('icon.ico', format='ICO', sizes=[(256,256), (128,128), (64,64), (32,32)])
-              img.save('icon.icns', format='ICNS')
+              img.save('icon.png')
           "
+
       - name: Build with PyInstaller
         run: |
           ICON_ARGS=""
-          if [ -f "icon.png" ]; then
-            ICON_ARGS="--icon=icon.png --add-data icon.png:."
-          fi
-          python3 -m PyInstaller --onefile --windowed --paths . --hidden-import pkgutil $ICON_ARGS --name MagicGatherer src/main.py
+          if [ -f "icon.png" ]; then ICON_ARGS="--icon=icon.png --add-data icon.png:."; fi
+          python3 -m PyInstaller \
+            --onefile --windowed \
+            --paths magic_gatherer_qt/src \
+            --add-data "magic_gatherer_qt/logo.png:." \
+            --hidden-import pkgutil \
+            $ICON_ARGS \
+            --name MagicGatherer \
+            magic_gatherer_qt/src/main.py
+
       - name: Create Release and Upload
         uses: softprops/action-gh-release@v1
         with:
