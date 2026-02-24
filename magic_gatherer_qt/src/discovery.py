@@ -1,0 +1,320 @@
+import random
+from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
+                             QComboBox, QListWidget, QLabel)
+from PyQt5.QtCore import pyqtSignal, QThread
+from ui_core import StyledPane, HeaderLabel, CANVAS_BG, PANE_BG, ACCENT_COLOR
+from api import safe_get
+
+class CommanderFetchThread(QThread):
+    results_ready = pyqtSignal(list)
+    error_occurred = pyqtSignal(str)
+    
+    def __init__(self, query):
+        super().__init__()
+        self.query = query
+        
+    def run(self):
+        try:
+            # We want random commanders, so we sort by random if requested or just execute the query
+            url = "https://api.scryfall.com/cards/search"
+            resp = safe_get(url, params={"q": self.query})
+            resp.raise_for_status()
+            data = resp.json()
+            
+            cards = data.get("data", [])
+            
+            # If standard search, we just shuffle the first page to simulate random picks if sorting is not explicit
+            if "sort=random" not in self.query:
+                random.shuffle(cards)
+                
+            tops = [c["name"] for c in cards[:5]]
+            self.results_ready.emit(tops)
+        except Exception as e:
+            self.error_occurred.emit(str(e))
+
+
+class DiscoveryWidget(StyledPane):
+    preview_requested = pyqtSignal(str)
+    build_requested = pyqtSignal(str)
+    
+    def __init__(self):
+        super().__init__()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+        
+        header_row = QHBoxLayout()
+        header_row.addWidget(HeaderLabel("Phase 4: The Discovery Loop"))
+        self.btn_help = QPushButton("❓ Help")
+        self.btn_help.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #2C2C2C;
+                color: {ACCENT_COLOR};
+                border-radius: 4px;
+                padding: 4px 8px;
+                font-weight: bold;
+            }}
+            QPushButton:pressed {{
+                background-color: #4C4C4C;
+            }}
+        """)
+        self.btn_help.clicked.connect(self.show_help)
+        header_row.addWidget(self.btn_help)
+        header_row.addStretch()
+        layout.addLayout(header_row)
+        
+        # WUBRG Toggle Row
+        wubrg_layout = QHBoxLayout()
+        self.color_buttons = {}
+        colors = [('W', '#F8F6D8'), ('U', '#C1D8E9'), ('B', '#BAB1AB'), ('R', '#E49977'), ('G', '#A3C095')]
+        
+        for code, hexcolor in colors:
+            btn = QPushButton(code)
+            btn.setCheckable(True)
+            btn.setFixedSize(40, 40)
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: #2C2C2C;
+                    color: {hexcolor};
+                    border-radius: 20px;
+                    font-weight: bold;
+                    font-size: 16px;
+                }}
+                QPushButton:checked {{
+                    background-color: {hexcolor};
+                    color: black;
+                }}
+            """)
+            wubrg_layout.addWidget(btn)
+            self.color_buttons[code] = btn
+            
+        layout.addLayout(wubrg_layout)
+        
+        # Controls Row 1
+        ctrl_layout = QHBoxLayout()
+        
+        self.btn_flip = QPushButton("🎲 Flip Coins")
+        self.btn_flip.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {ACCENT_COLOR};
+                color: white;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-weight: bold;
+            }}
+            QPushButton:pressed {{
+                background-color: #0056b3;
+            }}
+        """)
+        self.btn_flip.clicked.connect(lambda: self.trigger_search(randomize=True))
+        ctrl_layout.addWidget(self.btn_flip)
+        
+        self.btn_manual = QPushButton("🔍 Search Library")
+        self.btn_manual.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #4C4C4C;
+                color: white;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-weight: bold;
+            }}
+            QPushButton:pressed {{
+                background-color: #2C2C2C;
+            }}
+        """)
+        self.btn_manual.clicked.connect(lambda: self.trigger_search(randomize=False))
+        ctrl_layout.addWidget(self.btn_manual)
+        
+        self.btn_reset = QPushButton("↺")
+        self.btn_reset.setToolTip("Reset Colors")
+        self.btn_reset.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #2C2C2C;
+                color: white;
+                border-radius: 4px;
+                padding: 8px;
+                font-weight: bold;
+                font-size: 16px;
+            }}
+            QPushButton:pressed {{
+                background-color: #4C4C4C;
+            }}
+        """)
+        self.btn_reset.clicked.connect(self.reset_coins)
+        ctrl_layout.addWidget(self.btn_reset)
+        
+        layout.addLayout(ctrl_layout)
+        
+        # Controls Row 2 (Filters)
+        filter_layout = QHBoxLayout()
+        
+        self.cmc_combo = QComboBox()
+        self.cmc_combo.addItems(["Any CMC", "CMC ≤ 3", "CMC 4-5", "CMC ≥ 6"])
+        self.cmc_combo.setStyleSheet(self._combo_style())
+        filter_layout.addWidget(self.cmc_combo)
+        
+        self.pop_combo = QComboBox()
+        self.pop_combo.addItems(["Random", "Top EDHREC", "Fringe"])
+        self.pop_combo.setStyleSheet(self._combo_style())
+        filter_layout.addWidget(self.pop_combo)
+        
+        self.format_combo = QComboBox()
+        self.format_combo.addItems(["Paper", "Arena", "MTGO"])
+        self.format_combo.setStyleSheet(self._combo_style())
+        filter_layout.addWidget(self.format_combo)
+        
+        layout.addLayout(filter_layout)
+        
+        # Master-Detail List
+        self.list_widget = QListWidget()
+        self.list_widget.setStyleSheet(f"""
+            QListWidget {{
+                background-color: #121212;
+                color: white;
+                border: 1px solid #2C2C2C;
+                border-radius: 4px;
+                padding: 4px;
+            }}
+            QListWidget::item:selected {{
+                background-color: {ACCENT_COLOR};
+            }}
+        """)
+        self.list_widget.setFixedHeight(120)
+        self.list_widget.itemSelectionChanged.connect(self.on_item_selected)
+        layout.addWidget(self.list_widget)
+        
+        # Build Button
+        self.btn_build = QPushButton("Build This Commander")
+        self.btn_build.setEnabled(False)
+        self.btn_build.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #4C4C4C;
+                color: white;
+                border-radius: 4px;
+                padding: 8px;
+                font-weight: bold;
+            }}
+            QPushButton:disabled {{
+                background-color: #2C2C2C;
+                color: gray;
+            }}
+        """)
+        self.btn_build.clicked.connect(self.on_build_clicked)
+        layout.addWidget(self.btn_build)
+        
+    def _combo_style(self):
+        return """
+            QComboBox {
+                background-color: #2C2C2C;
+                color: white;
+                border-radius: 4px;
+                padding: 4px 8px;
+            }
+        """
+        
+    def reset_coins(self):
+        self.list_widget.clear()
+        for btn in self.color_buttons.values():
+            btn.setChecked(False)
+        
+    def trigger_search(self, randomize=False):
+        self.list_widget.clear()
+        if randomize:
+            self.list_widget.addItem("Flipping true coins & fetching...")
+        else:
+            self.list_widget.addItem("Fetching manual color search...")
+        
+        active_colors = []
+        for code, btn in self.color_buttons.items():
+            if randomize:
+                result = random.choice([True, False])
+                btn.setChecked(result)
+            else:
+                result = btn.isChecked()
+                
+            if result:
+                active_colors.append(code)
+                
+        # Build Scryfall Query
+        # "search_identity = 'C'" if empty
+        if not active_colors:
+            identity = "id=c"
+        else:
+            identity = "id=" + "".join(active_colors)
+            
+        pieces = ["is:commander", identity]
+        
+        cmc_text = self.cmc_combo.currentText()
+        if "≤ 3" in cmc_text:
+            pieces.append("cmc<=3")
+        elif "4-5" in cmc_text:
+            pieces.append("cmc>=4 cmc<=5")
+        elif "≥ 6" in cmc_text:
+            pieces.append("cmc>=6")
+            
+        pop_text = self.pop_combo.currentText()
+        if pop_text == "Top EDHREC":
+            pieces.append("sort=edhrec")
+        elif pop_text == "Random":
+            # Scryfall has no pure sort=random for query matching perfectly but we can fake it by shuffling
+            pass 
+        
+        # Format restriction
+        fmt = self.format_combo.currentText()
+        if fmt == "Arena":
+            pieces.append("game:arena")
+        elif fmt == "MTGO":
+            pieces.append("game:mtgo")
+            
+        query = " ".join(pieces)
+        
+        self.fetcher = CommanderFetchThread(query)
+        self.fetcher.results_ready.connect(self.on_fetch_success)
+        self.fetcher.error_occurred.connect(self.on_fetch_error)
+        self.fetcher.start()
+        
+    def on_fetch_success(self, names):
+        self.list_widget.clear()
+        if not names:
+            self.list_widget.addItem("No commanders found for these coins.")
+            return
+            
+        for name in names:
+            self.list_widget.addItem(name)
+            
+    def on_fetch_error(self, err):
+        self.list_widget.clear()
+        self.list_widget.addItem(f"Error: {err}")
+        
+    def on_item_selected(self):
+        items = self.list_widget.selectedItems()
+        if items and "Error:" not in items[0].text() and "No commanders" not in items[0].text() and "Flipping" not in items[0].text():
+            name = items[0].text()
+            self.preview_requested.emit(name)
+            self.btn_build.setEnabled(True)
+            self.btn_build.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {ACCENT_COLOR};
+                    color: white;
+                    border-radius: 4px;
+                    padding: 8px;
+                    font-weight: bold;
+                }}
+            """)
+        else:
+            self.btn_build.setEnabled(False)
+            
+    def on_build_clicked(self):
+        items = self.list_widget.selectedItems()
+        if items:
+            name = items[0].text()
+            self.build_requested.emit(name)
+            
+    def show_help(self):
+        from PyQt5.QtWidgets import QMessageBox
+        QMessageBox.information(self, "Discovery Roll Help", 
+            "Don't know what to play? Try the Deck Roller!\n\n"
+            "1. Toggle your preferred Magic colors (WUBRG).\n"
+            "2. Click 'Toss Coin' to search Scryfall for 5 random commanders matching your colors.\n"
+            "3. Double-click to preview the card, or click 'Build This' to auto-import them to the Main deck builder!"
+        )
