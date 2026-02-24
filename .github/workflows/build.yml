@@ -83,10 +83,18 @@ jobs:
           if [ -f "icon.icns" ]; then
             ICON_ARGS="--icon=icon.icns"
           fi
+          # macOS MUST use --onedir (not --onefile) for PyQt5 to actually launch.
+          # --onefile silently fails to load Qt platform plugins on macOS.
           python3 -m PyInstaller \
-            --onefile --windowed \
+            --onedir --windowed \
             --paths magic_gatherer_qt/src \
             --add-data "magic_gatherer_qt/logo.png:." \
+            --hidden-import PyQt5.sip \
+            --hidden-import PyQt5.QtCore \
+            --hidden-import PyQt5.QtGui \
+            --hidden-import PyQt5.QtWidgets \
+            --hidden-import PyQt5.QtPrintSupport \
+            --hidden-import pkg_resources \
             --hidden-import pkgutil \
             $ICON_ARGS \
             --name MagicGatherer \
