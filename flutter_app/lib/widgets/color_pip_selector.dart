@@ -30,7 +30,11 @@ class ColorPipSelector extends StatelessWidget {
         return GestureDetector(
           onTap: () {
             final next = Set<String>.from(selected);
-            if (active) next.remove(pip.code); else next.add(pip.code);
+            if (active) {
+              next.remove(pip.code);
+            } else {
+              next.add(pip.code);
+            }
             onChanged(next);
           },
           child: AnimatedContainer(
@@ -45,7 +49,7 @@ class ColorPipSelector extends StatelessWidget {
                 width: active ? 2.5 : 1,
               ),
               boxShadow: active
-                  ? [BoxShadow(color: pip.bg.withOpacity(0.6), blurRadius: 8)]
+                  ? [BoxShadow(color: pip.bg.withValues(alpha: 0.6), blurRadius: 8)]
                   : null,
             ),
             child: Center(

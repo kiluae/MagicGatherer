@@ -116,7 +116,7 @@ class ScryfallService {
     final results = <ScryfallCard>[];
     String? nextPage = Uri.parse('$_base/cards/search')
         .replace(queryParameters: {
-      'q': '${query}${formatFilter != null ? " game:$formatFilter" : ""}',
+      'q': '$query${formatFilter != null ? " game:$formatFilter" : ""}',
       'order': 'name',
     }).toString();
 
@@ -145,8 +145,11 @@ class ScryfallService {
     if (colors.isNotEmpty) {
       q += ' color:${colors.join('')}';
     }
-    if (format == 'arena') q += ' game:arena';
-    else if (format == 'mtgo') q += ' game:mtgo';
+    if (format == 'arena') {
+      q += ' game:arena';
+    } else if (format == 'mtgo') {
+      q += ' game:mtgo';
+    }
 
     final uri = Uri.parse('$_base/cards/search').replace(queryParameters: {
       'q': q,
@@ -173,8 +176,11 @@ class ScryfallService {
     if (colors.isNotEmpty) {
       q += ' color:${colors.join('')}';
     }
-    if (format == 'arena') q += ' game:arena';
-    else if (format == 'mtgo') q += ' game:mtgo';
+    if (format == 'arena') {
+      q += ' game:arena';
+    } else if (format == 'mtgo') {
+      q += ' game:mtgo';
+    }
 
     String? nextUrl = Uri.parse('$_base/cards/search').replace(queryParameters: {
       'q': q,

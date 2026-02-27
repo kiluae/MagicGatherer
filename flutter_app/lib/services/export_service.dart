@@ -486,8 +486,6 @@ class ExportEngine {
     return true;
   }
 
-  static String _esc(String s) =>
-      s.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
 
   static String _csvEsc(String s) {
     final escaped = s.replaceAll('"', '""');

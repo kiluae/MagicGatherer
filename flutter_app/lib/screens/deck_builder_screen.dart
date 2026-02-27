@@ -25,9 +25,9 @@ class _DeckBuilderBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return const Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: const [
+      children: [
         SizedBox(width: 390, child: _LeftPane()),
         VerticalDivider(thickness: 1, width: 1),
         Expanded(child: _RightPane()),
@@ -81,21 +81,21 @@ class _LeftPaneState extends State<_LeftPane>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Deck Builder',
+                Text('Deck Builder',
                     style: TextStyle(
                         color: kText,
                         fontSize: 16,
                         fontWeight: FontWeight.bold)),
-                const SizedBox(height: 2),
-                const Text(
+                SizedBox(height: 2),
+                Text(
                     'Load a deck, parse it, then hit Gather Your Magic.',
                     style: TextStyle(color: kTextMuted, fontSize: 11)),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
               ],
             ),
           ),
@@ -225,10 +225,10 @@ class _PasteTab extends StatelessWidget {
               expands: true,
               style: const TextStyle(
                   color: kText, fontSize: 12, fontFamily: 'monospace'),
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 hintText: '1x Sol Ring\n1x Command Tower\n...',
-                hintStyle: const TextStyle(color: kTextMuted, fontSize: 12),
-                contentPadding: const EdgeInsets.all(10),
+                hintStyle: TextStyle(color: kTextMuted, fontSize: 12),
+                contentPadding: EdgeInsets.all(10),
                 border: OutlineInputBorder(
                     borderSide: BorderSide(color: kBorder)),
                 enabledBorder: OutlineInputBorder(
@@ -409,6 +409,7 @@ class _CardRow extends StatelessWidget {
           onPressed: () async {
             final result = await FilePicker.platform.pickFiles(
                 type: FileType.image, allowMultiple: false);
+            if (!context.mounted) return;
             if (result != null && result.files.single.path != null) {
               context
                   .read<DeckBuilderProvider>()

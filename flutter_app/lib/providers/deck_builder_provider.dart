@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import '../models/card_models.dart';
@@ -65,9 +64,7 @@ class DeckBuilderProvider extends ChangeNotifier {
       // Match to globalCardPool for full oracle data, fallback to Scryfall result
       final lookup = <String, Map<String, dynamic>>{};
       for (final c in globalCardPool) {
-        if (c is Map<String, dynamic>) {
-          lookup[(c['name'] as String? ?? '').toLowerCase()] = c;
-        }
+        lookup[(c['name'] as String? ?? '').toLowerCase()] = c;
       }
 
       parsedDeck = scryfallCards.map((sc) {

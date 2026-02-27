@@ -49,7 +49,7 @@ class _FlipBody extends StatelessWidget {
           SizedBox(
             width: 270,
             child: Container(
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 color: kBgCard,
                 border: Border(
                     left: BorderSide(color: kBorder),
@@ -87,7 +87,7 @@ class _ControlPanel extends StatelessWidget {
         _CoinRow(provider: provider),
         const SizedBox(height: 6),
         // Legend
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: const [
+        const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           Icon(Icons.circle, size: 7, color: kTextMuted),
           SizedBox(width: 3),
           Text('= off  ', style: TextStyle(color: kTextMuted, fontSize: 9)),
@@ -104,7 +104,7 @@ class _ControlPanel extends StatelessWidget {
         _sectionLabel('Pool'),
         const SizedBox(height: 6),
         DropdownButtonFormField<String>(
-          value: provider.poolTier,
+          initialValue: provider.poolTier,
           dropdownColor: kBgCard,
           style: const TextStyle(color: kText, fontSize: 12),
           decoration: const InputDecoration(
@@ -124,7 +124,7 @@ class _ControlPanel extends StatelessWidget {
         _sectionLabel('Sort By'),
         const SizedBox(height: 6),
         DropdownButtonFormField<String>(
-          value: provider.localSort,
+          initialValue: provider.localSort,
           dropdownColor: kBgCard,
           style: const TextStyle(color: kText, fontSize: 12),
           decoration: const InputDecoration(
@@ -144,7 +144,7 @@ class _ControlPanel extends StatelessWidget {
         _sectionLabel('Amount'),
         const SizedBox(height: 6),
         DropdownButtonFormField<int>(
-          value: provider.maxReturns,
+          initialValue: provider.maxReturns,
           dropdownColor: kBgCard,
           style: const TextStyle(color: kText, fontSize: 12),
           decoration: const InputDecoration(
@@ -373,10 +373,10 @@ class _MasterList extends StatelessWidget {
     }
 
     if (provider.results.isEmpty) {
-      return Center(
+      return const Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          children: const [
+          children: [
             Icon(Icons.casino, color: kTextMuted, size: 48),
             SizedBox(height: 12),
             Text('Flip to discover commanders!',
@@ -392,7 +392,7 @@ class _MasterList extends StatelessWidget {
         Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
               color: kBgPane,
               border: Border(bottom: BorderSide(color: kBorder))),
           child: Column(
@@ -606,7 +606,7 @@ class _CardDetail extends StatelessWidget {
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
               color: kBgPane,
               border: Border(top: BorderSide(color: kBorder))),
           child: Column(
@@ -667,7 +667,7 @@ class _CardDetail extends StatelessWidget {
                           onPressed: cmdr == null
                               ? null
                               : () {
-                                  final name = cmdr['name'] as String? ?? '';
+                                  // final name = cmdr['name'] as String? ?? '';
                                 },
                         ),
                       ),
@@ -701,7 +701,7 @@ class _CardDetail extends StatelessWidget {
                         child: OutlinedButton.icon(
                           style: OutlinedButton.styleFrom(
                             foregroundColor: kTextMuted,
-                            side: BorderSide(color: kBorder),
+                            side: const BorderSide(color: kBorder),
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 10, vertical: 8),
                             textStyle: const TextStyle(fontSize: 11),
