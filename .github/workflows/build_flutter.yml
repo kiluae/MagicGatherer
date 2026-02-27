@@ -1,0 +1,75 @@
+name: Flutter Build and Release
+on:
+  push:
+    branches:
+      - testing_v1
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build for ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            artifact: MagicGatherer-Windows.zip
+            flutter_target: windows
+          - name: macOS
+            os: macos-latest
+            artifact: MagicGatherer-macOS.zip
+            flutter_target: macos
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.x'
+          channel: stable
+          cache: true
+
+      - name: Enable desktop target
+        run: flutter config --enable-${{ matrix.flutter_target }}-desktop
+
+      - name: Install dependencies
+        working-directory: flutter_app
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: flutter_app
+        run: flutter analyze --fatal-infos
+
+      - name: Build
+        working-directory: flutter_app
+        run: flutter build ${{ matrix.flutter_target }} --release
+
+      - name: Zip (Windows)
+        if: matrix.name == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path flutter_app/build/windows/x64/runner/Release/* `
+            -DestinationPath ${{ matrix.artifact }}
+
+      - name: Zip (macOS)
+        if: matrix.name == 'macOS'
+        run: |
+          cd flutter_app/build/macos/Build/Products/Release
+          zip -yr ../../../../../../${{ matrix.artifact }} MagicGatherer.app
+
+      - name: Upload to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ${{ matrix.artifact }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

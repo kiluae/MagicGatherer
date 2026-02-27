@@ -1,0 +1,63 @@
+name: magic_gatherer
+description: "MagicGatherer — MTG card export & deck analysis tool."
+publish_to: 'none'
+version: 3.2.0+1
+
+environment:
+  sdk: ^3.5.0
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Networking
+  http: ^1.2.0
+
+  # Card images
+  cached_network_image: ^3.3.1
+  url_launcher: ^6.3.0
+  html: ^0.15.4
+
+  # Exports
+  pdf: ^3.10.10
+  printing: ^5.12.0
+  csv: ^6.0.0
+
+  # File picking / saving
+  file_picker: ^8.1.2
+  path_provider: ^2.1.4
+  path: ^1.9.0
+
+  # Settings persistence
+  shared_preferences: ^2.3.2
+
+  # State management
+  provider: ^6.1.2
+
+  # Navigation
+  go_router: ^13.2.0
+
+  # Typography
+  google_fonts: ^6.2.1
+
+  # Animations
+  flutter_animate: ^4.5.0
+
+  # Window control (desktop)
+  window_manager: ^0.4.3
+
+  # Drag & drop decklist files
+  desktop_drop: ^0.4.4
+
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/spinner.png
