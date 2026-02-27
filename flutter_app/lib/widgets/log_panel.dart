@@ -88,9 +88,9 @@ class _LogPanelState extends State<LogPanel> {
           // Header
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               color: kBgCard,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(6)),
             ),
             child: Text(label,
                 style: TextStyle(color: color, fontSize: 11,
@@ -108,7 +108,7 @@ class _LogPanelState extends State<LogPanel> {
                   padding: const EdgeInsets.only(bottom: 2),
                   child: Text(text,
                       style: TextStyle(
-                        color: messages.isEmpty ? color.withOpacity(0.4) : color,
+                        color: messages.isEmpty ? color.withValues(alpha: 0.4) : color,
                         fontSize: 11,
                         fontFamily: 'monospace',
                       )),

@@ -45,15 +45,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   late final List<_NavDestination> _destinations = [
-    _NavDestination(Icons.auto_fix_high_outlined, Icons.auto_fix_high,
+    const _NavDestination(Icons.auto_fix_high_outlined, Icons.auto_fix_high,
         'Gather', 'Gather your Magic'),
-    _NavDestination(Icons.casino_outlined, Icons.casino,
+    const _NavDestination(Icons.casino_outlined, Icons.casino,
         'Commander', 'Commander Roller'),
-    _NavDestination(Icons.medical_services_outlined, Icons.medical_services,
+    const _NavDestination(Icons.medical_services_outlined, Icons.medical_services,
         'Deck Doctor', 'Deck Doctor'),
-    _NavDestination(Icons.search_outlined, Icons.search,
+    const _NavDestination(Icons.search_outlined, Icons.search,
         'Search', 'Card Search'),
-    _NavDestination(Icons.picture_as_pdf_outlined, Icons.picture_as_pdf,
+    const _NavDestination(Icons.picture_as_pdf_outlined, Icons.picture_as_pdf,
         'Proxy', 'Proxy Builder'),
   ];
 

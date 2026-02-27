@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/card_models.dart';
@@ -284,50 +283,6 @@ class _ExportModalState extends State<_ExportModal> {
   Widget _label(String t) =>
       Text(t, style: const TextStyle(color: kTextMuted, fontSize: 11));
 
-  List<Widget> _formatOptions() => [
-    _fmtRadio('paper', Icons.layers,   'Paper',      'All cards included'),
-    _fmtRadio('arena', Icons.shield,   'Arena Only', 'Skips non-Arena cards'),
-    _fmtRadio('mtgo',  Icons.gamepad,  'MTGO Only',  'Skips non-MTGO cards'),
-  ];
-
-  Widget _fmtRadio(String key, IconData icon, String label, String sub) {
-    final active = _format == key;
-    return GestureDetector(
-      onTap: () => setState(() => _format = key),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(children: [
-          Icon(
-            active ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-            size: 16,
-            color: active ? kAccentLight : kTextMuted,
-          ),
-          const SizedBox(width: 10),
-          Icon(icon, size: 14, color: active ? kAccentLight : kTextMuted),
-          const SizedBox(width: 6),
-          Expanded(
-            child: RichText(
-              text: TextSpan(
-                children: [
-                  TextSpan(
-                    text: label,
-                    style: TextStyle(
-                        color: active ? kAccentLight : kText,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600),
-                  ),
-                  TextSpan(
-                    text: '  $sub',
-                    style: const TextStyle(color: kTextMuted, fontSize: 11),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ]),
-      ),
-    );
-  }
 
   Widget _outChip(String label, IconData icon, bool value,
       ValueChanged<bool> onChanged) {
@@ -466,7 +421,7 @@ class _ExportModalState extends State<_ExportModal> {
           Text(sub, style: const TextStyle(fontSize: 10, color: kTextMuted)),
         ],
       )),
-      Switch(value: value, activeColor: kAccentLight, onChanged: onChanged),
+      Switch(value: value, activeThumbColor: kAccentLight, onChanged: onChanged),
     ]);
   }
 
@@ -512,25 +467,31 @@ class _ExportModalState extends State<_ExportModal> {
       );
     }
     if (_doCsv) {
+      if (!mounted) return;
       setState(() => _status = 'Saving CSV…');
       await ExportEngine.triggerSave(
         context: context, defaultName: 'deck.csv',
         content: ExportEngine.toCSV(deck),
       );
+      if (!mounted) return;
     }
     if (_doDecklist) {
+      if (!mounted) return;
       setState(() => _status = 'Saving decklist…');
       await ExportEngine.triggerSave(
         context: context, defaultName: 'decklist.txt',
         content: ExportEngine.toClipboard(deck),
       );
+      if (!mounted) return;
     }
     if (_doMtgoDek) {
+      if (!mounted) return;
       setState(() => _status = 'Saving MTGO .dek…');
       await ExportEngine.triggerSave(
         context: context, defaultName: 'deck.dek',
         content: ExportEngine.toMTGO(deck),
       );
+      if (!mounted) return;
     }
     if (_doArena) {
       setState(() => _status = 'Copying Arena clipboard…');
@@ -562,6 +523,7 @@ class _ExportModalState extends State<_ExportModal> {
         preferMtgPics: _mtgPics,
         onProgress: (m) { if (mounted) setState(() => _status = m); },
       );
+      if (!mounted) return;
       await ExportEngine.triggerSave(
         context: context, defaultName: 'proxies.pdf', bytes: pdfBytes);
     }

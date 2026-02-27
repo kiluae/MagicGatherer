@@ -50,7 +50,7 @@ class AnalyticsDashboard extends StatelessWidget {
       // Mana curve: extract first number from mana cost if available
       // Approximate from type hints since CMC isn't in our model
       // (Scryfall search results do return cmc in JSON — future improvement)
-      final cmc = 0; // placeholder — will be populated when we add cmc to model
+      const cmc = 0; // placeholder — will be populated when we add cmc to model
       curve[cmc] = (curve[cmc] ?? 0) + 1;
 
       // Type breakdown
@@ -98,7 +98,7 @@ class _ManaCurveChart extends StatelessWidget {
                 height: (50 * pct).clamp(2.0, 50.0),
                 margin: const EdgeInsets.symmetric(horizontal: 1.5),
                 decoration: BoxDecoration(
-                  color: kAccent.withOpacity(0.7 + 0.3 * pct),
+                  color: kAccent.withValues(alpha: 0.7 + 0.3 * pct),
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
                 ),
               ),

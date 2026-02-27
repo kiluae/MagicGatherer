@@ -312,7 +312,7 @@ class _DeckDoctorScreenState extends State<DeckDoctorScreen> {
           const SizedBox(width: 16),
           Chip(
             label: Text(_detectedCommander, style: const TextStyle(fontSize: 12)),
-            backgroundColor: kAccent.withOpacity(0.2),
+            backgroundColor: kAccent.withValues(alpha: 0.2),
             avatar: const Icon(Icons.person, size: 14, color: kAccentLight),
           ),
         ],
@@ -347,8 +347,8 @@ class _DeckDoctorScreenState extends State<DeckDoctorScreen> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.08),
-            border: Border(bottom: BorderSide(color: kBorder)),
+            color: color.withValues(alpha: 0.08),
+            border: const Border(bottom: BorderSide(color: kBorder)),
           ),
           child: Row(
             children: [
@@ -387,7 +387,7 @@ class _DeckDoctorScreenState extends State<DeckDoctorScreen> {
                 width: 28, height: 22,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: kAccent.withOpacity(0.2),
+                  color: kAccent.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text('[${card.symbol}]',

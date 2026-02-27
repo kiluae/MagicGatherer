@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 import 'theme/dark_theme.dart';
-import 'screens/home_screen.dart';
 import 'screens/splash_screen.dart';
 import 'providers/splash_provider.dart';
 import 'services/app_settings.dart';

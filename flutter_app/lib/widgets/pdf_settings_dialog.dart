@@ -31,11 +31,11 @@ class _PdfSettingsDialogState extends State<PdfSettingsDialog> {
   static final _formats = <String, PdfPageFormat>{
     'US Letter': PdfPageFormat.letter,
     'US Legal':  PdfPageFormat.legal,
-    'Tabloid':   PdfPageFormat(11 * PdfPageFormat.inch, 17 * PdfPageFormat.inch),
+    'Tabloid':   const PdfPageFormat(11 * PdfPageFormat.inch, 17 * PdfPageFormat.inch),
     'A4':        PdfPageFormat.a4,
     'A3':        PdfPageFormat.a3,
-    'A2':        PdfPageFormat(16.54 * PdfPageFormat.inch, 23.39 * PdfPageFormat.inch),
-    'A1':        PdfPageFormat(23.39 * PdfPageFormat.inch, 33.11 * PdfPageFormat.inch),
+    'A2':        const PdfPageFormat(16.54 * PdfPageFormat.inch, 23.39 * PdfPageFormat.inch),
+    'A1':        const PdfPageFormat(23.39 * PdfPageFormat.inch, 33.11 * PdfPageFormat.inch),
   };
 
   @override
@@ -70,7 +70,7 @@ class _PdfSettingsDialogState extends State<PdfSettingsDialog> {
             _label('Paper Size'),
             const SizedBox(height: 6),
             DropdownButtonFormField<String>(
-              value: _currentLabel,
+              initialValue: _currentLabel,
               decoration: const InputDecoration(isDense: true),
               dropdownColor: kBgCard,
               items: _formats.keys

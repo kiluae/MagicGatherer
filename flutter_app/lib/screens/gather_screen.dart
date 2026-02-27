@@ -317,9 +317,9 @@ class _GatherScreenState extends State<GatherScreen> {
     margin: const EdgeInsets.only(bottom: 12),
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
     decoration: BoxDecoration(
-      color: kAccent.withOpacity(0.15),
+      color: kAccent.withValues(alpha: 0.15),
       borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: kAccent.withOpacity(0.4)),
+      border: Border.all(color: kAccent.withValues(alpha: 0.4)),
     ),
     child: Row(
       children: [
@@ -467,46 +467,7 @@ class _GatherScreenState extends State<GatherScreen> {
     ),
   );
 
-  Widget _exportOptions() => Column(
-    children: [
-      Wrap(
-        spacing: 12, runSpacing: 4,
-        children: [
-          _check('JSON',     _doJson,     (v) { AppSettings.instance.setExportJson(v!);     setState(() {}); }),
-          _check('CSV',      _doCsv,      (v) { AppSettings.instance.setExportCsv(v!);      setState(() {}); }),
-          _check('Decklist', _doDecklist, (v) { AppSettings.instance.setExportDecklist(v!); setState(() {}); }),
-          _check('Images',   _doImages,   (v) { AppSettings.instance.setExportImages(v!);   setState(() {}); }),
-          _check('PDF Proxies', _doPdf,   (v) { AppSettings.instance.setExportPdf(v!);      setState(() {}); }),
-          _check('MTGO .dek',  _doMtgo,   (v) { AppSettings.instance.setExportMtgo(v!);     setState(() {}); }),
-          _check('Arena Clipboard', _doArena, (v) { AppSettings.instance.setExportArena(v!); setState(() {}); }),
-        ],
-      ),
-      if (_doPdf) ...[
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            _check('Cut guides', _cropMarks, (v) { AppSettings.instance.setDrawCropMarks(v!); setState(() {}); }),
-            const Spacer(),
-            TextButton.icon(
-              icon: const Icon(Icons.tune, size: 15),
-              label: const Text('PDF Settings'),
-              onPressed: _showPdfSettings,
-              style: TextButton.styleFrom(foregroundColor: kAccentLight),
-            ),
-          ],
-        ),
-      ],
-    ],
-  );
 
-  Widget _check(String label, bool value, ValueChanged<bool?> onChanged) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      SizedBox(width: 20, height: 20, child: Checkbox(value: value, onChanged: onChanged)),
-      const SizedBox(width: 4),
-      Text(label, style: const TextStyle(fontSize: 12, color: kText)),
-    ],
-  );
 
   Widget _gatherButton() => ElevatedButton.icon(
     icon: _isRunning
@@ -541,13 +502,6 @@ class _GatherScreenState extends State<GatherScreen> {
     )),
   );
 
-  Future<void> _showPdfSettings() async {
-    final result = await showDialog<PdfSettings>(
-      context: context,
-      builder: (_) => PdfSettingsDialog(initial: _pdfSettings),
-    );
-    if (result != null) setState(() => _pdfSettings = result);
-  }
 
   void _showHelp() => showDialog(
     context: context,
