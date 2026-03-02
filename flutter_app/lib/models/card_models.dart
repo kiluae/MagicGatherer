@@ -9,6 +9,7 @@ class ScryfallCard {
   final String oracleText;
   final List<String> colorIdentity;
   final List<String> games; // ["paper", "arena", "mtgo"]
+  final Map<String, String> legalities; // {"timeless": "legal", ...}
   final List<CardFace>? cardFaces; // double-faced cards
   final int quantity;
   final int? mtgoId; // MTGO CatID (Scryfall: mtgo_id)
@@ -23,6 +24,7 @@ class ScryfallCard {
     this.oracleText = '',
     this.colorIdentity = const [],
     this.games = const ['paper'],
+    this.legalities = const {},
     this.cardFaces,
     this.quantity = 1,
     this.mtgoId,
@@ -31,8 +33,16 @@ class ScryfallCard {
   String get bestImageUri =>
       imageUriPng ?? imageUriLarge ?? imageUriNormal ?? '';
 
-  bool get isLegalInArena => games.contains('arena');
-  bool get isLegalInMtgo  => games.contains('mtgo');
+
+
+  bool get isLegalInArena => 
+      games.contains('arena') || 
+      (legalities['timeless'] != null && legalities['timeless'] != 'not_legal');
+
+  bool get isLegalInMtgo  => 
+      games.contains('mtgo') || 
+      mtgoId != null || 
+      (legalities['vintage'] != null && legalities['vintage'] != 'not_legal');
 
   factory ScryfallCard.fromJson(Map<String, dynamic> json, {int quantity = 1}) {
     List<CardFace>? faces;
@@ -54,6 +64,7 @@ class ScryfallCard {
       oracleText:     json['oracle_text'] as String? ?? '',
       colorIdentity:  (json['color_identity'] as List?)?.cast<String>() ?? [],
       games:          (json['games'] as List?)?.cast<String>() ?? ['paper'],
+      legalities:     (json['legalities'] as Map<String, dynamic>?)?.map((k, v) => MapEntry(k, v.toString())) ?? {},
       cardFaces:      faces,
       quantity:       quantity,
       mtgoId:         json['mtgo_id'] as int?,

@@ -30,6 +30,7 @@ class FlipProvider extends ChangeNotifier {
   bool   allowPartialColors = false;
   bool   includePartners    = true;  // default ON so 4-color rolls aren't empty
   String currentIdentityName = 'Colorless';
+  String formatFilter       = 'paper';
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
@@ -42,6 +43,7 @@ class FlipProvider extends ChangeNotifier {
   void setMaxCmc(int v)       { maxCmc = v;       notifyListeners(); }
   void setPoolTier(String v)  { poolTier = v;             notifyListeners(); }
   void setLocalSort(String v) { localSort = v;            notifyListeners(); }
+  void setFormatFilter(String v){ formatFilter = v;       notifyListeners(); }
   void togglePartialColors()  { allowPartialColors = !allowPartialColors; notifyListeners(); }
   void togglePartners()       { includePartners    = !includePartners;    notifyListeners(); }
 
@@ -97,6 +99,7 @@ class FlipProvider extends ChangeNotifier {
         maxReturns:         maxReturns,
         allowPartialColors: allowPartialColors,
         includePartners:    includePartners,
+        formatFilter:       formatFilter,
       );
       results           = commanders;
       _applySorting(); // sort before notifying so UI sees final order
