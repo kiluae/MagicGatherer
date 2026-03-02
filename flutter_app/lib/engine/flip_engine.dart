@@ -71,6 +71,7 @@ class CommanderFlipEngine {
     required int maxReturns,
     required bool allowPartialColors,
     required bool includePartners,
+    required String formatFilter,
   }) async {
     final String sortQuery = switch (poolTier) {
       'edhrec_top'    => 'order:edhrec+dir:asc',
@@ -91,8 +92,14 @@ class CommanderFlipEngine {
       colorQuery = 'id=$identity';
     }
 
+    final String formatQuery = switch (formatFilter) {
+      'arena' => '+game:arena',
+      'mtgo'  => '+game:mtgo',
+      _       => '',
+    };
+
     final String finalQuery =
-        'q=is:commander+$colorQuery+cmc<=$maxCmc+$sortQuery';
+        'q=is:commander+$colorQuery+cmc<=$maxCmc$formatQuery+$sortQuery';
     final url = '$_base/cards/search?$finalQuery';
 
     final resp = await _client.get(Uri.parse(url), headers: _headers);

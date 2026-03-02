@@ -100,6 +100,24 @@ class _ControlPanel extends StatelessWidget {
         ]),
         const SizedBox(height: 20),
 
+        _sectionLabel('Format'),
+        const SizedBox(height: 6),
+        DropdownButtonFormField<String>(
+          initialValue: provider.formatFilter,
+          dropdownColor: kBgCard,
+          style: const TextStyle(color: kText, fontSize: 12),
+          decoration: const InputDecoration(
+              contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              isDense: true),
+          items: const [
+            DropdownMenuItem(value: 'paper', child: Text('Paper (All)')),
+            DropdownMenuItem(value: 'arena', child: Text('MTG Arena Legal')),
+            DropdownMenuItem(value: 'mtgo',  child: Text('MTGO Legal')),
+          ],
+          onChanged: (v) { if (v != null) provider.setFormatFilter(v); },
+        ),
+        const SizedBox(height: 10),
+
         // Pool Tier dropdown
         _sectionLabel('Pool'),
         const SizedBox(height: 6),
