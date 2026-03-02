@@ -23,7 +23,7 @@ jobs:
             flutter_target: windows
           - name: macOS
             os: macos-latest
-            artifact: MagicGatherer-macOS.zip
+            artifact: MagicGatherer-macOS.dmg
             flutter_target: macos
 
     steps:
@@ -60,11 +60,11 @@ jobs:
             -Path flutter_app/build/windows/x64/runner/Release/* `
             -DestinationPath ${{ matrix.artifact }}
 
-      - name: Zip (macOS)
+      - name: Create DMG (macOS)
         if: matrix.name == 'macOS'
         run: |
           cd flutter_app/build/macos/Build/Products/Release
-          zip -yr ../../../../../../${{ matrix.artifact }} "MagicGatherer2 Beta.app"
+          hdiutil create -volname "MagicGatherer2 Beta" -srcfolder "MagicGatherer2 Beta.app" -ov -format UDZO ../../../../../../MagicGatherer-macOS.dmg
 
       - name: Upload to Release
         if: startsWith(github.ref, 'refs/tags/')
