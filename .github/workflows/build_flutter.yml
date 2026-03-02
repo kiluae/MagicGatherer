@@ -64,7 +64,7 @@ jobs:
         if: matrix.name == 'macOS'
         run: |
           cd flutter_app/build/macos/Build/Products/Release
-          zip -yr ../../../../../../${{ matrix.artifact }} MagicGatherer.app
+          zip -yr ../../../../../../${{ matrix.artifact }} "MagicGatherer2 Beta.app"
 
       - name: Upload to Release
         if: startsWith(github.ref, 'refs/tags/')
