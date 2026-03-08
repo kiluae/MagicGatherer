@@ -223,15 +223,19 @@ class ExportService {
 
 // ── Deck Parser ────────────────────────────────────────────────────────────────
 
-/// Parses a plain-text decklist (one card per line, formats like "1x Sol Ring",
-/// "1 Sol Ring", or "Sol Ring") against the offline [globalCardPool].
+/// Bulletproof decklist parser — handles MTG Arena, MTGO, Moxfield, and
+/// manual user input.  Ignores structural headers, strips set/collector
+/// metadata and foil tags, and falls back to MDFC prefix matching.
 class DeckParser {
-  static final _lineRe = RegExp(r'^(\d+)[xX]?\s+(.+)$');
+  /// Matches lines starting with a quantity: "1 ", "1x ", "20X ", etc.
+  /// Lines that don't match are silently ignored (headers, blank lines, notes).
+  static final _cardRe = RegExp(r'^(\d+)[xX]?\s+(.+)$');
 
-  /// Returns a [ProxyCard] list, skipping lines that don't match any card name.
-  static List<ProxyCard> parseTxt(
+  /// Parses [txt] against [globalCardPool] and returns both the matched
+  /// cards and a list of card names that could not be found.
+  static ({List<ProxyCard> deck, List<String> notFound}) parseTxt(
       String txt, List<dynamic> globalCardPool) {
-    // Build a fast lowercase-name lookup from the pool
+    // Build a fast lowercase-name → card-data lookup
     final lookup = <String, Map<String, dynamic>>{};
     for (final card in globalCardPool) {
       if (card is Map<String, dynamic>) {
@@ -240,26 +244,53 @@ class DeckParser {
       }
     }
 
-    final results = <ProxyCard>[];
-    for (final rawLine in txt.split('\n')) {
+    final deck     = <ProxyCard>[];
+    final notFound = <String>[];
+
+    for (final rawLine in txt.split(RegExp(r'\r?\n'))) {
       final line = rawLine.trim();
-      if (line.isEmpty || line.startsWith('//')) continue;
 
-      int qty = 1;
-      String cardName = line;
+      // Only process lines that start with a number (quantity).
+      // This automatically ignores "Commander", "Deck", "Sideboard",
+      // empty lines, comments, and any other structural text.
+      final match = _cardRe.firstMatch(line);
+      if (match == null) continue;
 
-      final m = _lineRe.firstMatch(line);
-      if (m != null) {
-        qty      = int.tryParse(m.group(1)!) ?? 1;
-        cardName = m.group(2)!.trim();
+      final qty     = int.tryParse(match.group(1) ?? '1') ?? 1;
+      final rawName = match.group(2) ?? '';
+
+      // ── Aggressive metadata stripping ─────────────────────────────────
+      // 1. Split at the first '(', '[', or '<' to drop set codes,
+      //    collector numbers, and Arena tags.
+      //    e.g.  "Sol Ring (C14) 12"            → "Sol Ring"
+      //          "Swords to Plowshares [STA]"   → "Swords to Plowshares"
+      // 2. Remove rogue foil designators like '*F*' or '*E*'.
+      String cleanName = rawName.split(RegExp(r'\s+[\(\[<]')).first;
+      cleanName = cleanName.replaceAll(RegExp(r'\s+\*?[FfE]\*?$'), '').trim();
+
+      // ── Exact match ───────────────────────────────────────────────────
+      final cardData = lookup[cleanName.toLowerCase()];
+      if (cardData != null) {
+        deck.add(ProxyCard(scryfallData: cardData, quantity: qty));
+        continue;
       }
 
-      final data = lookup[cardName.toLowerCase()];
-      if (data != null) {
-        results.add(ProxyCard(scryfallData: data, quantity: qty));
+      // ── Fallback: MDFC / Split cards ──────────────────────────────────
+      // User may paste just the front face ("Valki, God of Lies") but the
+      // database stores "Valki, God of Lies // Tibalt, Cosmic Impostor".
+      final lowerClean = cleanName.toLowerCase();
+      final fallback = lookup.entries.firstWhere(
+        (e) => e.key.startsWith('$lowerClean //'),
+        orElse: () => const MapEntry('', {}),
+      );
+      if (fallback.value.isNotEmpty) {
+        deck.add(ProxyCard(scryfallData: fallback.value, quantity: qty));
+      } else {
+        notFound.add(cleanName);
       }
     }
-    return results;
+
+    return (deck: deck, notFound: notFound);
   }
 }
 
