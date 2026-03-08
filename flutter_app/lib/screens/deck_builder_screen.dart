@@ -255,8 +255,27 @@ class _PasteTab extends StatelessWidget {
             label: const Text('Parse List',
                 style: TextStyle(fontWeight: FontWeight.bold)),
             onPressed: () {
-              context.read<DeckBuilderProvider>().rawText = ctrl.text;
-              context.read<DeckBuilderProvider>().parseDecklist();
+              final provider = context.read<DeckBuilderProvider>();
+              provider.rawText = ctrl.text;
+              provider.parseDecklist();
+
+              // Surface unrecognized cards via SnackBar
+              if (provider.notFoundList.isNotEmpty) {
+                final names = provider.notFoundList.take(10).join(', ');
+                final extra = provider.notFoundList.length > 10
+                    ? ' and ${provider.notFoundList.length - 10} more'
+                    : '';
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Could not find: $names$extra',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    backgroundColor: Colors.orange.shade800,
+                    duration: const Duration(seconds: 6),
+                  ),
+                );
+              }
             },
           ),
         ],

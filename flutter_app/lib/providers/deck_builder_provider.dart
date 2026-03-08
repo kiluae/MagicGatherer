@@ -13,6 +13,7 @@ class DeckBuilderProvider extends ChangeNotifier {
 
   // ── Parsed deck ───────────────────────────────────────────────────────────
   List<ProxyCard> parsedDeck = [];
+  List<String> notFoundList = [];
 
   // ── Generation state ──────────────────────────────────────────────────────
   bool    isGenerating = false;
@@ -26,11 +27,19 @@ class DeckBuilderProvider extends ChangeNotifier {
 
   // ── Parse (Pasted List tab) ──────────────────────────────────────────────
   void parseDecklist() {
-    parsedDeck = DeckParser.parseTxt(rawText, globalCardPool);
-    progressText = parsedDeck.isEmpty
-        ? 'No cards matched — is the local database loaded?'
-        : '${parsedDeck.fold(0, (s, c) => s + c.quantity)} cards '
-            '(${parsedDeck.length} unique)';
+    final result = DeckParser.parseTxt(rawText, globalCardPool);
+    parsedDeck   = result.deck;
+    notFoundList = result.notFound;
+
+    if (parsedDeck.isEmpty) {
+      progressText = 'No cards matched — is the local database loaded?';
+    } else {
+      final total = parsedDeck.fold(0, (s, c) => s + c.quantity);
+      progressText = '$total cards (${parsedDeck.length} unique)';
+      if (notFoundList.isNotEmpty) {
+        progressText += ' · ${notFoundList.length} not found';
+      }
+    }
     notifyListeners();
   }
 
