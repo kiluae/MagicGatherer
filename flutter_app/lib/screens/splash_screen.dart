@@ -14,14 +14,19 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+  late final Animation<double> _pulse;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat();
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
+
+    _pulse = Tween<double>(begin: 0.85, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
 
     WidgetsBinding.instance.addPostFrameCallback((_) => _runSync());
   }
@@ -53,16 +58,14 @@ class _SplashScreenState extends State<SplashScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Transparent PNG spinner — no box, no decoration
-            RotationTransition(
-              turns: _controller,
+            // Pulsing app logo
+            ScaleTransition(
+              scale: _pulse,
               child: Image.asset(
-                'assets/spinner.png',
-                width: 100,
-                color: Colors.white,
-                colorBlendMode: BlendMode.srcIn,
+                'assets/logo.png',
+                width: 160,
                 errorBuilder: (c, e, s) =>
-                    const Icon(Icons.refresh, color: Colors.white, size: 60),
+                    const Icon(Icons.auto_fix_high, color: Colors.white, size: 80),
               ),
             ),
             const SizedBox(height: 32),
