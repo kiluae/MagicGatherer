@@ -24,6 +24,23 @@ class DeckBuilderProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── Category filter ───────────────────────────────────────────────────────
+  String activeFilter = 'Total';
+
+  void setFilter(String f) {
+    activeFilter = f;
+    notifyListeners();
+  }
+
+  // ── Category counts (for diagnosis chips) ─────────────────────────────────
+  int get landCount     => parsedDeck.where((c) => c.isLand).fold(0, (s, c) => s + c.quantity);
+  int get creatureCount => parsedDeck.where((c) => c.isCreature).fold(0, (s, c) => s + c.quantity);
+  int get spellCount    => parsedDeck.where((c) => c.isSpell).fold(0, (s, c) => s + c.quantity);
+  int get rampCount     => parsedDeck.where((c) => c.isRamp).fold(0, (s, c) => s + c.quantity);
+  int get drawCount     => parsedDeck.where((c) => c.isDraw).fold(0, (s, c) => s + c.quantity);
+  int get removalCount  => parsedDeck.where((c) => c.isRemoval).fold(0, (s, c) => s + c.quantity);
+  int get wipeCount     => parsedDeck.where((c) => c.isWipe).fold(0, (s, c) => s + c.quantity);
+
   // ── Computed: legality-driven views ────────────────────────────────────────
   List<ProxyCard> get legalCards =>
       parsedDeck.where((c) => c.isLegalIn(selectedFormat)).toList();

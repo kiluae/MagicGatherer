@@ -173,6 +173,24 @@ class ProxyCard {
   String get usdPrice =>
       (scryfallData['prices'] as Map?)?['usd'] as String? ?? '0.00';
   String get typeLine => scryfallData['type_line'] as String? ?? '';
+  String get oracleText => scryfallData['oracle_text'] as String? ?? '';
+
+  // ── Heuristic category getters ──────────────────────────────────────────
+  bool get isLand     => typeLine.toLowerCase().contains('land');
+  bool get isCreature => typeLine.toLowerCase().contains('creature');
+  bool get isSpell    => !isLand && !isCreature;
+
+  bool get isRamp => oracleText.toLowerCase().contains('add {') ||
+      oracleText.toLowerCase().contains('search your library for a basic land');
+
+  bool get isDraw => oracleText.toLowerCase().contains('draw a card') ||
+      oracleText.toLowerCase().contains('draw cards');
+
+  bool get isRemoval => oracleText.toLowerCase().contains('destroy target') ||
+      oracleText.toLowerCase().contains('exile target');
+
+  bool get isWipe => oracleText.toLowerCase().contains('destroy all') ||
+      oracleText.toLowerCase().contains('exile all');
 
   /// Dynamic legality check against any Scryfall format key or platform.
   bool isLegalIn(String format) {
