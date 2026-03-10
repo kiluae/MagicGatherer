@@ -3,7 +3,6 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../theme/dark_theme.dart';
 import 'gather_screen.dart';
 import 'commander_roller_screen.dart';
-import 'deck_doctor_screen.dart';
 import 'card_search_screen.dart';
 import 'deck_builder_screen.dart';
 
@@ -23,38 +22,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _sendToGather(List<Map<String, dynamic>> cards, String commanderName) {
     setState(() {
-      _pendingGatherCards     = cards;
-      _pendingCommanderName   = commanderName;
-      _selectedIndex          = 0; // Switch to Gather tab
-    });
-  }
-
-  void _sendToDoctor(String commanderName) {
-    setState(() {
-      _pendingCommanderName = commanderName;
-      _selectedIndex        = 2; // Switch to Format Surgeon tab
-    });
-  }
-
-  void _sendGatherFromDoctor(List<Map<String, dynamic>> cards, String commanderName) {
-    setState(() {
       _pendingGatherCards   = cards;
       _pendingCommanderName = commanderName;
-      _selectedIndex        = 0;
+      _selectedIndex        = 0; // Switch to Gatherer tab
     });
   }
 
   late final List<_NavDestination> _destinations = [
     const _NavDestination(Icons.auto_fix_high_outlined, Icons.auto_fix_high,
-        'Gather', 'Gather your Magic'),
+        'Gatherer', 'Gather your Magic'),
     const _NavDestination(Icons.casino_outlined, Icons.casino,
-        'Commander', 'Commander Roller'),
-    const _NavDestination(Icons.medical_services_outlined, Icons.medical_services,
-        'Format Surgeon', 'Format Surgeon'),
+        'Commander', 'Commander Flip'),
     const _NavDestination(Icons.search_outlined, Icons.search,
         'Search', 'Card Search'),
-    const _NavDestination(Icons.picture_as_pdf_outlined, Icons.picture_as_pdf,
-        'Proxy', 'Proxy Builder'),
+    const _NavDestination(Icons.build_outlined, Icons.build,
+        'Builder', 'Deck Builder'),
   ];
 
   @override
@@ -71,7 +53,6 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.only(top: 12, bottom: 24),
               child: Column(
                 children: [
-                  // App icon / logo
                   Container(
                     width: 40, height: 40,
                     decoration: BoxDecoration(
@@ -92,9 +73,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const VerticalDivider(thickness: 1, width: 1),
 
           // ── Screen area ────────────────────────────────────────────────────
-          Expanded(
-            child: _buildScreen(),
-          ),
+          Expanded(child: _buildScreen()),
         ],
       ),
     );
@@ -116,19 +95,13 @@ class _HomeScreenState extends State<HomeScreen> {
       case 1:
         return CommanderRollerScreen(
           onSendToGather: _sendToGather,
-          onSendToDoctor: _sendToDoctor,
+          onSendToDoctor: (_) {}, // No longer routes to a separate screen
         ).animate().fadeIn(duration: 180.ms);
 
       case 2:
-        return DeckDoctorScreen(
-          initialCommander: _pendingCommanderName,
-          onSendToGather:   _sendGatherFromDoctor,
-        ).animate().fadeIn(duration: 180.ms);
-
-      case 3:
         return const CardSearchScreen().animate().fadeIn(duration: 180.ms);
 
-      case 4:
+      case 3:
       default:
         return const DeckBuilderScreen().animate().fadeIn(duration: 180.ms);
     }

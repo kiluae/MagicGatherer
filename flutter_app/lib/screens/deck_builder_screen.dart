@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
+import '../engine/deck_doctor_engine.dart';
 import '../providers/deck_builder_provider.dart';
 import '../models/card_models.dart';
 import '../services/commander_cache_service.dart';
@@ -28,7 +29,7 @@ class _DeckBuilderBody extends StatelessWidget {
     return const Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SizedBox(width: 390, child: _LeftPane()),
+        SizedBox(width: 360, child: _LeftPane()),
         VerticalDivider(thickness: 1, width: 1),
         Expanded(child: _RightPane()),
       ],
@@ -54,10 +55,9 @@ class _LeftPaneState extends State<_LeftPane>
   @override
   void initState() {
     super.initState();
-    _tabs     = TabController(length: 2, vsync: this);
+    _tabs      = TabController(length: 2, vsync: this);
     _pasteCtrl = TextEditingController();
     _cmdCtrl   = TextEditingController();
-    // Load commander name list for fuzzy autocomplete
     CommanderCacheService().getCommanders(onStatus: (_) {}).then((cmds) {
       if (mounted) setState(() => _commanderNames = cmds.map((c) => c.name).toList());
     });
@@ -80,7 +80,6 @@ class _LeftPaneState extends State<_LeftPane>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Header
           const Padding(
             padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
             child: Column(
@@ -88,19 +87,14 @@ class _LeftPaneState extends State<_LeftPane>
               children: [
                 Text('Deck Builder',
                     style: TextStyle(
-                        color: kText,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold)),
+                        color: kText, fontSize: 16, fontWeight: FontWeight.bold)),
                 SizedBox(height: 2),
-                Text(
-                    'Load a deck, parse it, then hit Gather Your Magic.',
+                Text('Load a deck, parse it, then hit Gather Your Magic.',
                     style: TextStyle(color: kTextMuted, fontSize: 11)),
                 SizedBox(height: 12),
               ],
             ),
           ),
-
-          // Tab bar
           Container(
             color: kBgCard,
             child: TabBar(
@@ -109,44 +103,36 @@ class _LeftPaneState extends State<_LeftPane>
               unselectedLabelColor: kTextMuted,
               indicatorColor: kAccentLight,
               indicatorWeight: 2,
-              labelStyle: const TextStyle(
-                  fontSize: 12, fontWeight: FontWeight.w600),
+              labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
               tabs: const [
                 Tab(icon: Icon(Icons.person_search, size: 16), text: 'Commander Lookup'),
                 Tab(icon: Icon(Icons.content_paste, size: 16), text: 'Pasted List'),
               ],
             ),
           ),
-
-          // Tab content
           Expanded(
             child: TabBarView(
               controller: _tabs,
               children: [
-                _CommanderTab(
-                    ctrl: _cmdCtrl, commanderNames: _commanderNames),
+                _CommanderTab(ctrl: _cmdCtrl, commanderNames: _commanderNames),
                 _PasteTab(ctrl: _pasteCtrl),
               ],
             ),
           ),
-
-          // Status
           if (p.progressText.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Text(p.progressText,
                   style: const TextStyle(color: kTextMuted, fontSize: 11),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis),
+                  maxLines: 2, overflow: TextOverflow.ellipsis),
             ),
-
         ],
       ),
     );
   }
 }
 
-// ── Tab A: Commander Lookup (EDHREC average list) ────────────────────────────
+// ── Tab A: Commander Lookup ─────────────────────────────────────────────────
 
 class _CommanderTab extends StatelessWidget {
   final TextEditingController ctrl;
@@ -156,16 +142,13 @@ class _CommanderTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.watch<DeckBuilderProvider>();
-
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
-            'Enter a commander name to fetch the EDHREC average decklist.',
-            style: TextStyle(color: kTextMuted, fontSize: 11),
-          ),
+          const Text('Enter a commander name to fetch the EDHREC average decklist.',
+              style: TextStyle(color: kTextMuted, fontSize: 11)),
           const SizedBox(height: 10),
           FuzzySearchField(
             controller: ctrl,
@@ -176,28 +159,21 @@ class _CommanderTab extends StatelessWidget {
           const SizedBox(height: 12),
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
-              backgroundColor: kAccent,
-              foregroundColor: Colors.white,
+              backgroundColor: kAccent, foregroundColor: Colors.white,
               minimumSize: const Size.fromHeight(42),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
             icon: p.isFetching
-                ? const SizedBox(
-                    width: 16, height: 16,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white))
+                ? const SizedBox(width: 16, height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                 : const Icon(Icons.search, size: 18),
-            label: Text(
-                p.isFetching ? 'Fetching...' : 'Fetch EDHREC Average',
+            label: Text(p.isFetching ? 'Fetching...' : 'Fetch EDHREC Average',
                 style: const TextStyle(fontWeight: FontWeight.bold)),
-            onPressed: p.isFetching
-                ? null
-                : () {
-                    final name = ctrl.text.trim();
-                    if (name.isEmpty) return;
-                    context.read<DeckBuilderProvider>().fetchFromEdhrec(name);
-                  },
+            onPressed: p.isFetching ? null : () {
+              final name = ctrl.text.trim();
+              if (name.isEmpty) return;
+              context.read<DeckBuilderProvider>().fetchFromEdhrec(name);
+            },
           ),
         ],
       ),
@@ -205,7 +181,7 @@ class _CommanderTab extends StatelessWidget {
   }
 }
 
-// ── Tab B: Pasted List ───────────────────────────────────────────────────────
+// ── Tab B: Pasted List ──────────────────────────────────────────────────────
 
 class _PasteTab extends StatelessWidget {
   final TextEditingController ctrl;
@@ -221,60 +197,43 @@ class _PasteTab extends StatelessWidget {
           Expanded(
             child: TextField(
               controller: ctrl,
-              maxLines: null,
-              expands: true,
-              style: const TextStyle(
-                  color: kText, fontSize: 12, fontFamily: 'monospace'),
+              maxLines: null, expands: true,
+              style: const TextStyle(color: kText, fontSize: 12, fontFamily: 'monospace'),
               decoration: const InputDecoration(
                 hintText: '1x Sol Ring\n1x Command Tower\n...',
                 hintStyle: TextStyle(color: kTextMuted, fontSize: 12),
                 contentPadding: EdgeInsets.all(10),
-                border: OutlineInputBorder(
-                    borderSide: BorderSide(color: kBorder)),
-                enabledBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: kBorder)),
-                focusedBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: kAccentLight)),
-                filled: true,
-                fillColor: kBgCard,
+                border: OutlineInputBorder(borderSide: BorderSide(color: kBorder)),
+                enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: kBorder)),
+                focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: kAccentLight)),
+                filled: true, fillColor: kBgCard,
               ),
-              onChanged: (v) =>
-                  context.read<DeckBuilderProvider>().rawText = v,
+              onChanged: (v) => context.read<DeckBuilderProvider>().rawText = v,
             ),
           ),
           const SizedBox(height: 10),
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
-              backgroundColor: kAccent,
-              foregroundColor: Colors.white,
+              backgroundColor: kAccent, foregroundColor: Colors.white,
               minimumSize: const Size.fromHeight(42),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
             icon: const Icon(Icons.manage_search, size: 18),
-            label: const Text('Parse List',
-                style: TextStyle(fontWeight: FontWeight.bold)),
+            label: const Text('Parse List', style: TextStyle(fontWeight: FontWeight.bold)),
             onPressed: () {
               final provider = context.read<DeckBuilderProvider>();
               provider.rawText = ctrl.text;
               provider.parseDecklist();
-
-              // Surface unrecognized cards via SnackBar
               if (provider.notFoundList.isNotEmpty) {
                 final names = provider.notFoundList.take(10).join(', ');
                 final extra = provider.notFoundList.length > 10
-                    ? ' and ${provider.notFoundList.length - 10} more'
-                    : '';
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Could not find: $names$extra',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                    backgroundColor: Colors.orange.shade800,
-                    duration: const Duration(seconds: 6),
-                  ),
-                );
+                    ? ' and ${provider.notFoundList.length - 10} more' : '';
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text('Could not find: $names$extra',
+                      style: const TextStyle(fontSize: 12)),
+                  backgroundColor: Colors.orange.shade800,
+                  duration: const Duration(seconds: 6),
+                ));
               }
             },
           ),
@@ -284,13 +243,15 @@ class _PasteTab extends StatelessWidget {
   }
 }
 
-// ── Quick Export Strip ───────────────────────────────────────────────────────
-
-
-// ── Right Pane: Card List + Gather Button ────────────────────────────────────
+// ── Right Pane: Analytical Dashboard ────────────────────────────────────────
 
 class _RightPane extends StatelessWidget {
   const _RightPane();
+
+  static const _formats = [
+    'paper', 'arena', 'mtgo', 'commander', 'standard',
+    'pioneer', 'modern', 'historic', 'brawl', 'pauper',
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -301,7 +262,37 @@ class _RightPane extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Card list
+          // ── Format Chips ─────────────────────────────────────────────────
+          Container(
+            color: kBgPane,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: _formats.map((f) => Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: ChoiceChip(
+                    label: Text(_formatLabel(f), style: const TextStyle(fontSize: 11)),
+                    selected: p.selectedFormat == f,
+                    onSelected: (_) => p.setFormat(f),
+                    selectedColor: kAccent,
+                    backgroundColor: kBgCard,
+                    labelStyle: TextStyle(
+                        color: p.selectedFormat == f ? Colors.white : kTextMuted),
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                  ),
+                )).toList(),
+              ),
+            ),
+          ),
+
+          // ── Diagnosis Dashboard ──────────────────────────────────────────
+          if (p.parsedDeck.isNotEmpty) _DiagnosisBanner(provider: p),
+
+          const Divider(height: 1),
+
+          // ── Smart Card List ──────────────────────────────────────────────
           Expanded(
             child: p.parsedDeck.isEmpty
                 ? Center(
@@ -312,26 +303,18 @@ class _RightPane extends StatelessWidget {
                             size: 48, color: kTextMuted.withValues(alpha: 0.4)),
                         const SizedBox(height: 12),
                         const Text('No deck loaded.',
-                            style: TextStyle(
-                                color: kTextMuted, fontSize: 14)),
+                            style: TextStyle(color: kTextMuted, fontSize: 14)),
                         const SizedBox(height: 4),
-                        const Text(
-                            'Use Commander Lookup or paste a list on the left.',
-                            style: TextStyle(
-                                color: kTextMuted, fontSize: 11)),
+                        const Text('Use Commander Lookup or paste a list on the left.',
+                            style: TextStyle(color: kTextMuted, fontSize: 11)),
                       ],
                     ),
                   )
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    itemCount: p.parsedDeck.length,
-                    itemBuilder: (ctx, i) =>
-                        _CardRow(index: i, card: p.parsedDeck[i]),
-                  ),
+                : _SmartCardList(provider: p),
           ),
           const Divider(height: 1),
 
-          // Status + Gather button
+          // ── Gather Button ─────────────────────────────────────────────────
           Container(
             color: kBgPane,
             padding: const EdgeInsets.all(12),
@@ -342,40 +325,27 @@ class _RightPane extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Text(p.progressText,
-                        style: const TextStyle(
-                            color: kTextMuted, fontSize: 11),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis),
+                        style: const TextStyle(color: kTextMuted, fontSize: 11),
+                        maxLines: 2, overflow: TextOverflow.ellipsis),
                   ),
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
                     backgroundColor:
-                        (p.isGenerating || p.parsedDeck.isEmpty)
-                            ? kBgCard
-                            : kAccent,
+                        (p.isGenerating || p.parsedDeck.isEmpty) ? kBgCard : kAccent,
                     foregroundColor: Colors.white,
                     minimumSize: const Size.fromHeight(48),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
                   icon: p.isGenerating
-                      ? const SizedBox(
-                          width: 18, height: 18,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white))
+                      ? const SizedBox(width: 18, height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                       : const Icon(Icons.auto_fix_high, size: 20),
                   label: Text(
-                      p.isGenerating
-                          ? 'Gathering...'
-                          : 'Gather Your Magic',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 14)),
+                      p.isGenerating ? 'Gathering...' : 'Gather Your Magic',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                   onPressed: (p.isGenerating || p.parsedDeck.isEmpty)
                       ? null
-                      : () => showExportSelectionModal(
-                            context,
-                            proxyDeck: p.parsedDeck,
-                          ),
+                      : () => showExportSelectionModal(context, proxyDeck: p.parsedDeck),
                 ),
               ],
             ),
@@ -384,14 +354,101 @@ class _RightPane extends StatelessWidget {
       ),
     );
   }
+
+  String _formatLabel(String f) => switch (f) {
+    'arena'     => 'Arena',
+    'mtgo'      => 'MTGO',
+    'paper'     => 'Paper',
+    'commander' => 'Commander',
+    'standard'  => 'Standard',
+    'pioneer'   => 'Pioneer',
+    'modern'    => 'Modern',
+    'historic'  => 'Historic',
+    'brawl'     => 'Brawl',
+    'pauper'    => 'Pauper',
+    _           => f,
+  };
 }
 
-// ── Card Row ─────────────────────────────────────────────────────────────────
+// ── Diagnosis Banner ────────────────────────────────────────────────────────
 
-class _CardRow extends StatelessWidget {
+class _DiagnosisBanner extends StatelessWidget {
+  final DeckBuilderProvider provider;
+  const _DiagnosisBanner({required this.provider});
+
+  @override
+  Widget build(BuildContext context) {
+    final d       = provider.diagnosis;
+    final dropped = provider.droppedCards.length;
+
+    return Container(
+      color: kBgPane,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          _stat('Total', '${d.totalCards + dropped}', kAccentLight),
+          _stat('Legal', '${d.totalCards}', const Color(0xFF22C55E)),
+          _stat('Dropped', '$dropped',
+              dropped > 0 ? const Color(0xFFEF4444) : kTextMuted),
+          _stat('Ramp', '${d.rampCount}', const Color(0xFF22C55E)),
+          _stat('Draw', '${d.drawCount}', const Color(0xFF3B82F6)),
+          _stat('Removal', '${d.removalCount}', const Color(0xFFF97316)),
+          _stat('Lands', '${d.landCount}', const Color(0xFF84CC16)),
+        ],
+      ),
+    );
+  }
+
+  Widget _stat(String label, String value, Color color) => Expanded(
+    child: Column(children: [
+      Text(value, style: TextStyle(
+          color: color, fontSize: 16, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 2),
+      Text(label, style: const TextStyle(color: kTextMuted, fontSize: 9)),
+    ]),
+  );
+}
+
+// ── Smart Card List ─────────────────────────────────────────────────────────
+
+class _SmartCardList extends StatelessWidget {
+  final DeckBuilderProvider provider;
+  const _SmartCardList({required this.provider});
+
+  @override
+  Widget build(BuildContext context) {
+    final deck       = provider.parsedDeck;
+    final format     = provider.selectedFormat;
+    final suggestions = provider.suggestions;
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      itemCount: deck.length,
+      itemBuilder: (ctx, i) {
+        final card   = deck[i];
+        final legal  = card.isLegalIn(format);
+
+        if (legal) {
+          return _LegalCardRow(index: i, card: card);
+        } else {
+          return _IllegalCardRow(
+            card: card,
+            suggestions: suggestions[card.name] ?? [],
+            onSwap: (replacement) =>
+                provider.swapSuggestion(card.name, replacement),
+          );
+        }
+      },
+    );
+  }
+}
+
+// ── Legal Card Row ──────────────────────────────────────────────────────────
+
+class _LegalCardRow extends StatelessWidget {
   final int index;
   final ProxyCard card;
-  const _CardRow({required this.index, required this.card});
+  const _LegalCardRow({required this.index, required this.card});
 
   @override
   Widget build(BuildContext context) {
@@ -399,16 +456,13 @@ class _CardRow extends StatelessWidget {
     return ListTile(
       dense: true,
       leading: CircleAvatar(
-        radius: 14,
-        backgroundColor: kBgCard,
+        radius: 14, backgroundColor: kBgCard,
         child: Text('${card.quantity}',
             style: const TextStyle(color: kText, fontSize: 12)),
       ),
-      title: Text(card.name,
-          style: const TextStyle(color: kText, fontSize: 12)),
+      title: Text(card.name, style: const TextStyle(color: kText, fontSize: 12)),
       subtitle: Text(
-          '${card.setCode.toUpperCase()} · CMC ${card.cmc}'
-          ' · \$${card.usdPrice}',
+          '${card.setCode.toUpperCase()} · CMC ${card.cmc} · \$${card.usdPrice}',
           style: const TextStyle(color: kTextMuted, fontSize: 10)),
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
         if (hasOverride)
@@ -418,11 +472,8 @@ class _CardRow extends StatelessWidget {
           ),
         IconButton(
           icon: Icon(
-            hasOverride
-                ? Icons.image
-                : Icons.add_photo_alternate_outlined,
-            size: 18,
-            color: kTextMuted,
+            hasOverride ? Icons.image : Icons.add_photo_alternate_outlined,
+            size: 18, color: kTextMuted,
           ),
           tooltip: 'Set custom art image',
           onPressed: () async {
@@ -430,8 +481,7 @@ class _CardRow extends StatelessWidget {
                 type: FileType.image, allowMultiple: false);
             if (!context.mounted) return;
             if (result != null && result.files.single.path != null) {
-              context
-                  .read<DeckBuilderProvider>()
+              context.read<DeckBuilderProvider>()
                   .setLocalImage(index, result.files.single.path!);
             }
           },
@@ -439,4 +489,112 @@ class _CardRow extends StatelessWidget {
       ]),
     );
   }
+}
+
+// ── Illegal Card Row + Prescription ─────────────────────────────────────────
+
+class _IllegalCardRow extends StatelessWidget {
+  final ProxyCard card;
+  final List<Map<String, dynamic>> suggestions;
+  final void Function(Map<String, dynamic>) onSwap;
+
+  const _IllegalCardRow({
+    required this.card,
+    required this.suggestions,
+    required this.onSwap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final oracle   = card.scryfallData['oracle_text'] as String? ?? '';
+    final typeLine = card.typeLine;
+    final roles    = DeckDoctorEngine.getRoles(oracle, typeLine);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.red.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.red.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Card header
+          Row(children: [
+            const Icon(Icons.warning_amber_rounded, size: 16,
+                color: Color(0xFFEF4444)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(card.name, style: const TextStyle(
+                  color: kText, fontSize: 12, fontWeight: FontWeight.w600)),
+            ),
+            ...roles.map((r) => Container(
+              margin: const EdgeInsets.only(left: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              decoration: BoxDecoration(
+                color: _roleColor(r).withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(r, style: TextStyle(
+                  color: _roleColor(r), fontSize: 8, fontWeight: FontWeight.bold)),
+            )),
+          ]),
+
+          // Suggestion row
+          if (suggestions.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            SizedBox(
+              height: 32,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: suggestions.length,
+                itemBuilder: (_, si) {
+                  final s     = suggestions[si];
+                  final sName = s['name'] as String? ?? '';
+                  return Container(
+                    margin: const EdgeInsets.only(right: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: kAccent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: kAccent.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Text(sName, style: const TextStyle(color: kText, fontSize: 10)),
+                      const SizedBox(width: 4),
+                      InkWell(
+                        onTap: () {
+                          onSwap(s);
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text('Swapped in $sName for ${card.name}'),
+                            backgroundColor: Colors.green.shade700,
+                            duration: const Duration(seconds: 2),
+                          ));
+                        },
+                        child: const Icon(Icons.add_circle, size: 14, color: kAccentLight),
+                      ),
+                    ]),
+                  );
+                },
+              ),
+            ),
+          ] else ...[
+            const SizedBox(height: 4),
+            const Text('No replacements found',
+                style: TextStyle(color: kTextMuted, fontSize: 9)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Color _roleColor(String role) => switch (role) {
+    'Ramp'    => const Color(0xFF22C55E),
+    'Draw'    => const Color(0xFF3B82F6),
+    'Removal' => const Color(0xFFF97316),
+    'Land'    => const Color(0xFF84CC16),
+    _         => kTextMuted,
+  };
 }
