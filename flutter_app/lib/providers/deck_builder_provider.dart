@@ -32,14 +32,28 @@ class DeckBuilderProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── Extras toggle (for Card Browser) ──────────────────────────────────────
+  bool showExtras = false;
+
+  void toggleExtras(bool v) {
+    showExtras = v;
+    notifyListeners();
+  }
+
   // ── Category counts (for diagnosis chips) ─────────────────────────────────
-  int get landCount     => parsedDeck.where((c) => c.isLand).fold(0, (s, c) => s + c.quantity);
-  int get creatureCount => parsedDeck.where((c) => c.isCreature).fold(0, (s, c) => s + c.quantity);
-  int get spellCount    => parsedDeck.where((c) => c.isSpell).fold(0, (s, c) => s + c.quantity);
-  int get rampCount     => parsedDeck.where((c) => c.isRamp).fold(0, (s, c) => s + c.quantity);
-  int get drawCount     => parsedDeck.where((c) => c.isDraw).fold(0, (s, c) => s + c.quantity);
-  int get removalCount  => parsedDeck.where((c) => c.isRemoval).fold(0, (s, c) => s + c.quantity);
-  int get wipeCount     => parsedDeck.where((c) => c.isWipe).fold(0, (s, c) => s + c.quantity);
+  // Only count actual deck cards (exclude tokens/emblems)
+  List<ProxyCard> get _mainDeck => parsedDeck.where((c) => !c.isTokenOrEmblem).toList();
+
+  int get mainDeckCount => _mainDeck.fold(0, (s, c) => s + c.quantity);
+  int get tokenCount    => parsedDeck.where((c) => c.isTokenOrEmblem).fold(0, (s, c) => s + c.quantity);
+
+  int get landCount     => _mainDeck.where((c) => c.isLand).fold(0, (s, c) => s + c.quantity);
+  int get creatureCount => _mainDeck.where((c) => c.isCreature).fold(0, (s, c) => s + c.quantity);
+  int get spellCount    => _mainDeck.where((c) => c.isSpell).fold(0, (s, c) => s + c.quantity);
+  int get rampCount     => _mainDeck.where((c) => c.isRamp).fold(0, (s, c) => s + c.quantity);
+  int get drawCount     => _mainDeck.where((c) => c.isDraw).fold(0, (s, c) => s + c.quantity);
+  int get removalCount  => _mainDeck.where((c) => c.isRemoval).fold(0, (s, c) => s + c.quantity);
+  int get wipeCount     => _mainDeck.where((c) => c.isWipe).fold(0, (s, c) => s + c.quantity);
 
   // ── Computed: legality-driven views ────────────────────────────────────────
   List<ProxyCard> get legalCards =>
@@ -80,6 +94,9 @@ class DeckBuilderProvider extends ChangeNotifier {
     final terms = query.toLowerCase().split(RegExp(r'\s+'));
 
     browserResults = globalCardPool.where((card) {
+      // Exclude non-playable layouts unless extras are enabled
+      if (!showExtras && !ProxyCard.isPlayableCard(card)) return false;
+
       final name = (card['name'] as String? ?? '').toLowerCase();
       // All search terms must appear in the card name
       if (!terms.every((t) => name.contains(t))) return false;

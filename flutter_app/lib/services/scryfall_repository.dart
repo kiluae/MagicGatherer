@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import '../models/card_models.dart';
 
 // ── Shared in-memory card pool ────────────────────────────────────────────────
 /// Loaded from the oracle_cards bulk download. Populated by [syncDatabase].
@@ -118,19 +119,25 @@ class ScryfallRepository {
         .where((t) => t.isNotEmpty)
         .toList();
     return globalCardPool.where((card) {
+      if (!ProxyCard.isPlayableCard(card)) return false;
       final name = (card['name'] as String? ?? '').toLowerCase();
       return terms.every((term) => name.contains(term));
     }).take(100).toList();
   }
 
   /// Fetch all official printings of a card by its oracle ID.
+  /// Includes extras (tokens, emblems, art series) via `include:extras`.
+  /// Falls back to exact name search for cards without an oracle_id.
   static Future<List<Map<String, dynamic>>> fetchPrintings(
-      String oracleId) async {
-    if (oracleId.isEmpty) return [];
+      String oracleId, {String cardName = ''}) async {
+    if (oracleId.isEmpty && cardName.isEmpty) return [];
     try {
+      final query = oracleId.isNotEmpty
+          ? 'oracleid:$oracleId'
+          : '!"$cardName"';
       final url = Uri.parse(
           'https://api.scryfall.com/cards/search'
-          '?order=released&q=oracleid:$oracleId&unique=prints');
+          '?order=released&q=$query+include:extras&unique=prints');
       final resp = await http.get(url, headers: _headers);
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body) as Map<String, dynamic>;

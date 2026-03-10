@@ -65,13 +65,22 @@ class ProxyGenerator {
 
       Uint8List? bytes;
 
-      // 2. MTGPics (if preferred)
+      // MTGPics (if preferred)
       if (preferMtgPics) {
+        onProgress?.call(
+            'Scraping MTGPics: ${card.name}... (${i + 1}/${slots.length})');
         bytes = await fetchMtgPicsImage(card.setCode, card.collectorNumber);
       }
 
-      // 3. Scryfall fallback (or primary when MTGPics not preferred)
+      // Scryfall fallback (or primary when MTGPics not preferred)
       if (bytes == null) {
+        if (preferMtgPics) {
+          onProgress?.call(
+              'MTGPics failed. Fallback to Scryfall: ${card.name}...');
+        } else {
+          onProgress?.call(
+              'Fetching Scryfall: ${card.name}... (${i + 1}/${slots.length})');
+        }
         final url = getScryfallHighRes(card.scryfallData);
         if (url.isNotEmpty) {
           try {
