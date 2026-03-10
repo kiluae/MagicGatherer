@@ -109,17 +109,60 @@ class DeckBuilderProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Determine the max allowed copies of a card for the active format.
+  int getMaxCopiesAllowed(Map<String, dynamic> cardData) {
+    final typeLine = (cardData['type_line'] as String? ?? '').toLowerCase();
+    final oracle   = (cardData['oracle_text'] as String? ?? '').toLowerCase();
+
+    // Basic Lands — no limit
+    if (typeLine.contains('basic') && typeLine.contains('land')) return 99;
+
+    // Oracle text exceptions
+    if (oracle.contains('any number of cards named')) return 99;
+    if (oracle.contains('up to nine cards named'))    return 9;
+    if (oracle.contains('up to seven cards named'))   return 7;
+
+    // Singleton formats
+    const singletons = ['commander', 'brawl', 'historicbrawl', 'duel'];
+    if (singletons.contains(selectedFormat.toLowerCase())) return 1;
+
+    // Default 60-card format limit
+    return 4;
+  }
+
   /// Add a card from the browser to the parsed deck.
-  /// If it already exists, increment quantity; otherwise append it.
-  void addCardToDeck(Map<String, dynamic> cardData) {
+  /// Enforces format-aware quantity caps. Returns null on success,
+  /// or a warning string if the cap was hit.
+  String? addCardToDeck(Map<String, dynamic> cardData) {
     final name = (cardData['name'] as String? ?? '').toLowerCase();
+    final maxAllowed = getMaxCopiesAllowed(cardData);
     final existing = parsedDeck.where(
         (c) => c.name.toLowerCase() == name);
 
     if (existing.isNotEmpty) {
-      existing.first.quantity += 1;
+      if (existing.first.quantity < maxAllowed) {
+        existing.first.quantity += 1;
+      } else {
+        notifyListeners();
+        return 'Format limit: max $maxAllowed copies of '
+            '${cardData['name']} in $selectedFormat.';
+      }
     } else {
       parsedDeck.add(ProxyCard(scryfallData: cardData, quantity: 1));
+    }
+    notifyListeners();
+    return null;
+  }
+
+  /// Decrement a card's quantity. If it hits 0, remove it entirely.
+  void decrementCardQuantity(ProxyCard target) {
+    final index = parsedDeck.indexWhere(
+        (c) => c.name.toLowerCase() == target.name.toLowerCase());
+    if (index == -1) return;
+    if (parsedDeck[index].quantity > 1) {
+      parsedDeck[index].quantity--;
+    } else {
+      parsedDeck.removeAt(index);
     }
     notifyListeners();
   }

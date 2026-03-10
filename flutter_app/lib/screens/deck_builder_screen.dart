@@ -6,8 +6,22 @@ import '../providers/deck_builder_provider.dart';
 import '../models/card_models.dart';
 import '../services/commander_cache_service.dart';
 import '../theme/dark_theme.dart';
+import '../widgets/card_hover_wrapper.dart';
 import '../widgets/export_modal.dart';
 import '../widgets/fuzzy_search_field.dart';
+
+/// Extract best image URL from raw Scryfall JSON.
+String _cardImageUrl(Map<String, dynamic> data) {
+  final imgs = data['image_uris'] as Map<String, dynamic>?;
+  if (imgs != null) return imgs['normal'] as String? ?? imgs['png'] as String? ?? '';
+  // Double-faced cards: use front face
+  final faces = data['card_faces'] as List?;
+  if (faces != null && faces.isNotEmpty) {
+    final fImgs = (faces[0] as Map<String, dynamic>)['image_uris'] as Map<String, dynamic>?;
+    return fImgs?['normal'] as String? ?? fImgs?['png'] as String? ?? '';
+  }
+  return '';
+}
 
 class DeckBuilderScreen extends StatelessWidget {
   const DeckBuilderScreen({super.key});
@@ -329,13 +343,23 @@ class _BrowseTab extends StatelessWidget {
                               size: 18, color: kAccentLight),
                           tooltip: 'Add to deck',
                           onPressed: () {
-                            p.addCardToDeck(card);
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                              content: Text('Added $name to deck',
-                                  style: const TextStyle(fontSize: 12)),
-                              backgroundColor: Colors.green.shade700,
-                              duration: const Duration(seconds: 1),
-                            ));
+                            final warning = p.addCardToDeck(card);
+                            if (!context.mounted) return;
+                            if (warning != null) {
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                content: Text(warning,
+                                    style: const TextStyle(fontSize: 12)),
+                                backgroundColor: Colors.orange.shade800,
+                                duration: const Duration(seconds: 3),
+                              ));
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                content: Text('Added $name to deck',
+                                    style: const TextStyle(fontSize: 12)),
+                                backgroundColor: Colors.green.shade700,
+                                duration: const Duration(seconds: 1),
+                              ));
+                            }
                           },
                         ),
                       );
@@ -616,41 +640,80 @@ class _LegalCardRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = context.read<DeckBuilderProvider>();
     final hasOverride = card.localImagePath != null;
-    return ListTile(
-      dense: true,
-      leading: CircleAvatar(
-        radius: 14, backgroundColor: kBgCard,
-        child: Text('${card.quantity}',
-            style: const TextStyle(color: kText, fontSize: 12)),
+    final imgUrl = _cardImageUrl(card.scryfallData);
+    final maxAllowed = p.getMaxCopiesAllowed(card.scryfallData);
+    final isOverLimit = card.quantity > maxAllowed;
+
+    return CardHoverWrapper(
+      imageUrl: imgUrl,
+      child: ListTile(
+        dense: true,
+        title: Text(card.name, style: const TextStyle(color: kText, fontSize: 12)),
+        subtitle: Text(
+            '${card.setCode.toUpperCase()} · CMC ${card.cmc} · \$${card.usdPrice}',
+            style: const TextStyle(color: kTextMuted, fontSize: 10)),
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (hasOverride)
+            const Tooltip(
+              message: 'Custom art override set',
+              child: Icon(Icons.check_circle, size: 14, color: Colors.green),
+            ),
+          IconButton(
+            icon: Icon(
+              hasOverride ? Icons.image : Icons.add_photo_alternate_outlined,
+              size: 16, color: kTextMuted,
+            ),
+            tooltip: 'Set custom art image',
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            padding: EdgeInsets.zero,
+            onPressed: () async {
+              final result = await FilePicker.platform.pickFiles(
+                  type: FileType.image, allowMultiple: false);
+              if (!context.mounted) return;
+              if (result != null && result.files.single.path != null) {
+                context.read<DeckBuilderProvider>()
+                    .setLocalImage(index, result.files.single.path!);
+              }
+            },
+          ),
+          const SizedBox(width: 4),
+          IconButton(
+            icon: const Icon(Icons.remove_circle_outline,
+                size: 18, color: Color(0xFFEF4444)),
+            tooltip: 'Remove one',
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            padding: EdgeInsets.zero,
+            onPressed: () => p.decrementCardQuantity(card),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Text('${card.quantity}',
+                style: TextStyle(
+                    color: isOverLimit ? const Color(0xFFEF4444) : kText,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold)),
+          ),
+          IconButton(
+            icon: const Icon(Icons.add_circle_outline,
+                size: 18, color: Color(0xFF22C55E)),
+            tooltip: 'Add one',
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            padding: EdgeInsets.zero,
+            onPressed: () {
+              final warning = p.addCardToDeck(card.scryfallData);
+              if (warning != null && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(warning, style: const TextStyle(fontSize: 12)),
+                  backgroundColor: Colors.orange.shade800,
+                  duration: const Duration(seconds: 3),
+                ));
+              }
+            },
+          ),
+        ]),
       ),
-      title: Text(card.name, style: const TextStyle(color: kText, fontSize: 12)),
-      subtitle: Text(
-          '${card.setCode.toUpperCase()} · CMC ${card.cmc} · \$${card.usdPrice}',
-          style: const TextStyle(color: kTextMuted, fontSize: 10)),
-      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-        if (hasOverride)
-          const Tooltip(
-            message: 'Custom art override set',
-            child: Icon(Icons.check_circle, size: 14, color: Colors.green),
-          ),
-        IconButton(
-          icon: Icon(
-            hasOverride ? Icons.image : Icons.add_photo_alternate_outlined,
-            size: 18, color: kTextMuted,
-          ),
-          tooltip: 'Set custom art image',
-          onPressed: () async {
-            final result = await FilePicker.platform.pickFiles(
-                type: FileType.image, allowMultiple: false);
-            if (!context.mounted) return;
-            if (result != null && result.files.single.path != null) {
-              context.read<DeckBuilderProvider>()
-                  .setLocalImage(index, result.files.single.path!);
-            }
-          },
-        ),
-      ]),
     );
   }
 }
