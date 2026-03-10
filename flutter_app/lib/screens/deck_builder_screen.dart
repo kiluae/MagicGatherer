@@ -370,7 +370,7 @@ class _RightPane extends StatelessWidget {
   };
 }
 
-// ── Diagnosis Banner ────────────────────────────────────────────────────────
+// ── Diagnosis Banner (Interactive Filter Chips) ─────────────────────────────
 
 class _DiagnosisBanner extends StatelessWidget {
   final DeckBuilderProvider provider;
@@ -378,38 +378,57 @@ class _DiagnosisBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final d       = provider.diagnosis;
+    final total   = provider.parsedDeck.fold(0, (s, c) => s + c.quantity);
     final dropped = provider.droppedCards.length;
+    final active  = provider.activeFilter;
 
     return Container(
       color: kBgPane,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Row(
-        children: [
-          _stat('Total', '${d.totalCards + dropped}', kAccentLight),
-          _stat('Legal', '${d.totalCards}', const Color(0xFF22C55E)),
-          _stat('Dropped', '$dropped',
-              dropped > 0 ? const Color(0xFFEF4444) : kTextMuted),
-          _stat('Ramp', '${d.rampCount}', const Color(0xFF22C55E)),
-          _stat('Draw', '${d.drawCount}', const Color(0xFF3B82F6)),
-          _stat('Removal', '${d.removalCount}', const Color(0xFFF97316)),
-          _stat('Lands', '${d.landCount}', const Color(0xFF84CC16)),
-        ],
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            _chip('Total',     '$total',                     kAccentLight,          active, provider),
+            _chip('Lands',     '${provider.landCount}',      const Color(0xFF84CC16), active, provider),
+            _chip('Creatures', '${provider.creatureCount}',  const Color(0xFF22C55E), active, provider),
+            _chip('Spells',    '${provider.spellCount}',     const Color(0xFF8B5CF6), active, provider),
+            _chip('Ramp',      '${provider.rampCount}',      const Color(0xFF22C55E), active, provider),
+            _chip('Draw',      '${provider.drawCount}',      const Color(0xFF3B82F6), active, provider),
+            _chip('Removal',   '${provider.removalCount}',   const Color(0xFFF97316), active, provider),
+            _chip('Wipe',      '${provider.wipeCount}',      const Color(0xFFEF4444), active, provider),
+            if (dropped > 0)
+              _chip('Dropped', '$dropped', const Color(0xFFEF4444), active, provider),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _stat(String label, String value, Color color) => Expanded(
-    child: Column(children: [
-      Text(value, style: TextStyle(
-          color: color, fontSize: 16, fontWeight: FontWeight.bold)),
-      const SizedBox(height: 2),
-      Text(label, style: const TextStyle(color: kTextMuted, fontSize: 9)),
-    ]),
-  );
+  Widget _chip(String label, String count, Color color, String active,
+      DeckBuilderProvider provider) {
+    final selected = active == label;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: ChoiceChip(
+        label: Text('$label: $count', style: TextStyle(
+          fontSize: 10,
+          fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+          color: selected ? Colors.white : color,
+        )),
+        selected: selected,
+        onSelected: (_) => provider.setFilter(selected ? 'Total' : label),
+        selectedColor: color.withValues(alpha: 0.35),
+        backgroundColor: kBgCard,
+        side: BorderSide(color: selected ? color : kBorder, width: selected ? 1.5 : 0.5),
+        visualDensity: VisualDensity.compact,
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+      ),
+    );
+  }
 }
 
-// ── Smart Card List ─────────────────────────────────────────────────────────
+// ── Smart Card List (with filter) ───────────────────────────────────────────
 
 class _SmartCardList extends StatelessWidget {
   final DeckBuilderProvider provider;
@@ -417,19 +436,45 @@ class _SmartCardList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final deck       = provider.parsedDeck;
-    final format     = provider.selectedFormat;
+    final format      = provider.selectedFormat;
     final suggestions = provider.suggestions;
+    final filter      = provider.activeFilter;
+
+    // Apply heuristic filter
+    final displayedDeck = provider.parsedDeck.where((card) {
+      switch (filter) {
+        case 'Total':     return true;
+        case 'Lands':     return card.isLand;
+        case 'Creatures': return card.isCreature;
+        case 'Spells':    return card.isSpell;
+        case 'Ramp':      return card.isRamp;
+        case 'Draw':      return card.isDraw;
+        case 'Removal':   return card.isRemoval;
+        case 'Wipe':      return card.isWipe;
+        case 'Dropped':   return !card.isLegalIn(format);
+        default:          return true;
+      }
+    }).toList();
+
+    if (displayedDeck.isEmpty) {
+      return Center(
+        child: Text('No $filter cards found.',
+            style: const TextStyle(color: kTextMuted, fontSize: 13)),
+      );
+    }
 
     return ListView.builder(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      itemCount: deck.length,
+      itemCount: displayedDeck.length,
       itemBuilder: (ctx, i) {
-        final card   = deck[i];
-        final legal  = card.isLegalIn(format);
+        final card  = displayedDeck[i];
+        final legal = card.isLegalIn(format);
 
         if (legal) {
-          return _LegalCardRow(index: i, card: card);
+          return _LegalCardRow(
+            index: provider.parsedDeck.indexOf(card),
+            card: card,
+          );
         } else {
           return _IllegalCardRow(
             card: card,
