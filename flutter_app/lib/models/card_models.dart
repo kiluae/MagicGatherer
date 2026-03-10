@@ -156,14 +156,9 @@ class ProxyCard {
   final Map<String, dynamic> scryfallData;
   int quantity;
 
-  /// Path to a user-supplied local image file. When non-null, overrides
-  /// both the Scryfall and MTGPics image sources in the PDF generator.
-  String? localImagePath;
-
   ProxyCard({
     required this.scryfallData,
     this.quantity = 1,
-    this.localImagePath,
   });
 
   String get name => scryfallData['name'] as String? ?? 'Unknown';

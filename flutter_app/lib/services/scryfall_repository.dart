@@ -122,4 +122,23 @@ class ScryfallRepository {
       return terms.every((term) => name.contains(term));
     }).take(100).toList();
   }
+
+  /// Fetch all official printings of a card by its oracle ID.
+  static Future<List<Map<String, dynamic>>> fetchPrintings(
+      String oracleId) async {
+    if (oracleId.isEmpty) return [];
+    try {
+      final url = Uri.parse(
+          'https://api.scryfall.com/cards/search'
+          '?order=released&q=oracleid:$oracleId&unique=prints');
+      final resp = await http.get(url, headers: _headers);
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body) as Map<String, dynamic>;
+        return List<Map<String, dynamic>>.from(data['data'] ?? []);
+      }
+    } catch (e) {
+      // Silently fail — caller handles empty list
+    }
+    return [];
+  }
 }

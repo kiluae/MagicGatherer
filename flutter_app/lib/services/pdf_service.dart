@@ -65,15 +65,8 @@ class ProxyGenerator {
 
       Uint8List? bytes;
 
-      // 1. Custom art override
-      if (card.localImagePath != null) {
-        try {
-          bytes = await File(card.localImagePath!).readAsBytes();
-        } catch (_) {}
-      }
-
-      // 2. MTGPics (if preferred and no override)
-      if (bytes == null && preferMtgPics) {
+      // 2. MTGPics (if preferred)
+      if (preferMtgPics) {
         bytes = await fetchMtgPicsImage(card.setCode, card.collectorNumber);
       }
 
