@@ -1,72 +1,27 @@
-# MagicGatherer
+# MagicGatherer2 Beta
 
-A high-fidelity MTG deck data fetcher for proxying and deckbuilding. 
+A high-fidelity MTG deck data fetcher and proxying tool, rebuilt from the ground up in Flutter for maximum performance and cross-platform stability.
 
-MagicGatherer provides unparalleled ease in converting standard Magic: The Gathering decklists from various formats into high-resolution, print-ready datasets natively mapping to Scryfall endpoints.
-
-## Why MagicGatherer?
-I built MagicGatherer because I play a *lot* of Historic Brawl on **Magic: The Gathering Arena**. I wanted a seamless way to pull popular commander lists directly from EDHREC and drop them into the digital client, but constantly hit roadblocks. MTG Arena natively rejects imported decks if they contain printings that don't exist digitally. If an EDHREC list had fifty incompatible paper-only cards, Arena would just throw a wall of text and refuse the import. 
-
-Even worse, EDHREC lists don't actively track Basic Lands, and manual spreadsheet scrubbing was exhausting. I needed a tool that could take an EDHREC commander, automatically cross-reference every single card against Scryfall's database to explicitly verify its `game:arena` legality, and silently drop the incompatible cards—while ensuring basic lands bypassed the filters flawlessly. 
-
-Thus, **MagicGatherer** was born. It started as a personal script to bypass Arena's strict import constraints for Historic Brawl and has evolved into a fully-fledged, cross-platform deckbuilding automation suite.
+## Why MagicGatherer2?
+MagicGatherer2 evolved from a Python script into a fully-fledged, cross-platform automation suite. It provides unparalleled ease in converting standard Magic: The Gathering decklists from various formats into high-resolution, print-ready datasets natively mapping to Scryfall endpoints.
 
 ## Features
 - **High-Res PNG Downloads:** Scrape the absolute highest quality scans for MPC or home printing.
-- **Instant Tabletop Proxies:** Automatically compile downloaded card art directly into perfect 3x3 600 DPI `_proxies.pdf` grids formatted flawlessly for standard US Letter cutouts. Features a customizable 1/8th-inch physical printing bleed mathematically configurable down to the pixel to prevent scissor-clipping edges.
-- **EDHREC Integration:** Automatically pull average composite lists by directly querying commander names with intelligent fuzzy-search Typos correction natively mapping to Scryfall.
-- **Digital Client Filtering:** Guarantee client-legal output utilizing a persistent API fetching backend perfectly integrated for MTG Arena and MTGO lists, seamlessly routing specific digital card availability.
-- **Clean Output Pipelines:** Export localized CSV spreadsheets, JSON dictionaries, or raw _Decklist Textfiles_ tailored for broad ingestion.
-
-## What's New (v2.0.1.1 Update)
-- **Expanded PDF Dimensions**: Generate print-ready 600 DPI proxies explicitly mathematically mapped to standard formats including US Letter, US Legal, US Tabloid, A4, A3, A2, and A1.
-- **Customizable Margins**: Define exact mechanical padding allowances (0px, 75px, 150px) between card cuts to ensure physical scissors never clip artwork.
-- **macOS & Windows Fixes**: Addressed the `base_library.zip` ghosting crash for compiled Windows Pyinstaller builds and the stripped `osascript` terminal execution arguments for macOS `Launch TUI` hooks.
-- **Module Resolution Stability**: Repathing `sys.path` guarantees you can invoke individual scripts natively from any local shell without a single `ModuleNotFoundError`.
-- **Beautiful Headless TUI**: Run `MagicGatherer --tui` directly in your terminal to instantly ditch the GUI for a breathtaking, highly responsive `rich`-powered Terminal User Interface, unlocking fast pipeline integration with zero app bloat.
-- **PySide6 Foundation**: Completely rewritten UI architecture utilizing the official Qt for Python bindings (PySide6) to guarantee absolutely flawless executable stability across Windows, macOS, and Linux without missing dynamic libraries.
-- **Modal Double-Faced Cards (MDFC) Support**: High-resolution image scraping now automatically identifies dual-sided cards, intelligently downloading the back face dynamically alongside the front face (e.g., `CardName.png` & `CardName (Back).png`).
-- **Smart OS Caching**: Blazing fast repeat queries via automated JSON caching securely nested in your home directory (`~/.magicgatherer/cache`)—immune to macOS Application Bundle read-only crashes.
-- **Clear Cache Interface**: Manage local disk footprint natively from the GUI with a dedicated click-to-wipe "Clear Cache" function.
-- **Fully Automated CI/CD**: Guaranteed 1:1 consistent compiled builds published across Windows, macOS, Ubuntu, and Fedora.
+- **Instant Tabletop Proxies:** Automatically compile downloaded card art directly into perfect 3x3 600 DPI `proxies.pdf` grids.
+- **EDHREC Integration:** Automatically pull average composite lists by directly querying commander names with intelligent fuzzy-search correction.
+- **Cross-Platform Excellence:** Native performance and sleek UI on Windows, macOS, and Linux.
+- **Smart OS Caching:** Blazing fast repeat queries via automated JSON caching.
 
 ## How to Use
-You do not need to install Python! Simply navigate to the [Releases](../../releases) tab and download the pre-compiled executable tailored for your operating system (Windows, macOS, or Linux). 
+Simply navigate to the [Releases](../../releases) tab and download the pre-compiled executable for your operating system (Windows, macOS, or Linux). 
 
-### Desktop GUI
-1. Launch the executable (`MagicGatherer`).
+1. Launch the executable (`MagicGatherer2Beta`).
 2. Select your Input format (Paste your deck, Browse for a `.txt`, or query an EDHREC Commander).
 3. Select your Format (Paper/Arena/MTGO) and Output options.
 4. Click **Gather your Magic** and choose a folder!
 
-### Headless Terminal Edition (TUI)
-You can launch the underlying `Textual` dashboard straight from the PySide6 Desktop wrapper by clicking **"Launch TUI"** in the bottom left corner! 
-
-Alternatively, you can entirely bypass the GUI by parsing standard terminal commands natively using the explicit `--tui` application flag:
-```bash
-./MagicGatherer --tui
-```
-
-Or use the CLI explicitly for pipeline injections:
-```bash
-./MagicGatherer --source edhrec --edhrec "Krenko, Mob Boss" --format mtgo --pdf-padding 125
-```
-Available flags: `--tui`, `--source <paste|file|edhrec>`, `--file <path>`, `--edhrec <cmd>`, `--format <paper|arena|mtgo>`, `--no-json`, `--no-csv`, `--no-mpc`, `--no-img`, `--no-pdf`, `--pdf-padding <px>`, `--paper-size <Letter|Legal|Tabloid|A4|A3|A2|A1>`, `--outdir <path>`.
-
-## Use Cases
-* **High-Fidelity Proxying:** Generate high-resolution PNG sets specifically for **MPCFill**, third-party proxy sites, or high-quality home printing.
-* **Digital Client Optimization:** Cross-reference MTGA/MTGO filtered metadata before building a deck to ensure your limited Rare/Mythic Wildcards or Event Tix are mathematically prioritized on the most impactful, high-synergy staples over niche inclusions.
-* **Brawl Deckbuilding Strategy:** Supplement EDHREC's paper-centric data with Digital Legality Filtering to build optimized client-only lists.
-* **AI-Assisted Deck Auditing:** Export your current deck alongside an Arena-filtered EDHREC list to JSON or CSV. Upload them to any LLM (like ChatGPT or Claude) to identify missing engines, optimize mana curves, and receive personalized swap suggestions outside the game.
-* **Comparative Data Analysis:** Open exported datasets in Excel or Google Sheets to manually compare synergy, mana curves, and card types between your paper and online collections.
-* **Scryfall Search Abstraction:** Skip complex query syntax; type in your Commander's name to immediately fetch all relevant card data and images.
-
-## Future Roadmap
-The ultimate vision for **MagicGatherer** is to evolve from a static data fetcher into a fully integrated **Local LLM Contextual Deck Builder**.
-By piping this massive aggregated Scryfall and EDHREC JSON data natively into a localized Large Language Model, the application will eventually be capable of analyzing user collections, mathematically optimizing mana curves, and contextually suggesting synergistic card swaps entirely offline.
-
 ## Disclaimer
-**All rights reserved.** MagicGatherer is an open-source tool for **play-testing purposes only**. I do not own any of the intellectual property, artwork, or card data associated with Magic: The Gathering. All card imagery and data are provided by Scryfall. Please support Wizards of the Coast and the original artists by purchasing official products.
+**All rights reserved.** MagicGatherer2 is an open-source tool for **play-testing purposes only**. I do not own any of the intellectual property, artwork, or card data associated with Magic: The Gathering. All card imagery and data are provided by Scryfall. Please support Wizards of the Coast and the original artists by purchasing official products.
 
 ---
 *Created by **yuhidev***  
