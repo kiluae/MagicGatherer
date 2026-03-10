@@ -172,4 +172,32 @@ class ProxyCard {
   num get cmc => scryfallData['cmc'] as num? ?? 0;
   String get usdPrice =>
       (scryfallData['prices'] as Map?)?['usd'] as String? ?? '0.00';
+  String get typeLine => scryfallData['type_line'] as String? ?? '';
+
+  /// Dynamic legality check against any Scryfall format key or platform.
+  bool isLegalIn(String format) {
+    final legalities =
+        scryfallData['legalities'] as Map<String, dynamic>? ?? {};
+    final games =
+        (scryfallData['games'] as List?)?.cast<String>() ?? [];
+
+    switch (format) {
+      case 'paper':
+        return true; // everything is paper-legal
+      case 'arena':
+        return games.contains('arena') ||
+            (legalities['timeless'] != null &&
+                legalities['timeless'] != 'not_legal');
+      case 'mtgo':
+        return games.contains('mtgo') ||
+            scryfallData['mtgo_id'] != null ||
+            (legalities['vintage'] != null &&
+                legalities['vintage'] != 'not_legal');
+      default:
+        // Named formats: standard, pioneer, modern, legacy, vintage,
+        // commander, brawl, historic, timeless, pauper, etc.
+        final status = legalities[format];
+        return status == 'legal' || status == 'restricted';
+    }
+  }
 }

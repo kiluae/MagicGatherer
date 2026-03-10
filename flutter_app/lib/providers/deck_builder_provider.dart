@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import '../engine/deck_doctor_engine.dart';
 import '../models/card_models.dart';
 import '../services/export_service.dart';
 import '../services/pdf_service.dart';
@@ -14,6 +15,37 @@ class DeckBuilderProvider extends ChangeNotifier {
   // ── Parsed deck ───────────────────────────────────────────────────────────
   List<ProxyCard> parsedDeck = [];
   List<String> notFoundList = [];
+
+  // ── Format filter ─────────────────────────────────────────────────────────
+  String selectedFormat = 'paper';
+
+  void setFormat(String f) {
+    selectedFormat = f;
+    notifyListeners();
+  }
+
+  // ── Computed: legality-driven views ────────────────────────────────────────
+  List<ProxyCard> get legalCards =>
+      parsedDeck.where((c) => c.isLegalIn(selectedFormat)).toList();
+
+  List<ProxyCard> get droppedCards =>
+      parsedDeck.where((c) => !c.isLegalIn(selectedFormat)).toList();
+
+  DeckDiagnosis get diagnosis => DeckDoctorEngine.diagnose(legalCards);
+
+  Map<String, List<Map<String, dynamic>>> get suggestions =>
+      droppedCards.isNotEmpty
+          ? DeckDoctorEngine.getSuggestions(droppedCards,
+              formatFilter: selectedFormat)
+          : {};
+
+  /// Swap a dropped card for a suggested replacement.
+  void swapSuggestion(String droppedName, Map<String, dynamic> replacement) {
+    parsedDeck.removeWhere(
+        (c) => c.name.toLowerCase() == droppedName.toLowerCase());
+    parsedDeck.add(ProxyCard(scryfallData: replacement, quantity: 1));
+    notifyListeners();
+  }
 
   // ── Generation state ──────────────────────────────────────────────────────
   bool    isGenerating = false;
