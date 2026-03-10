@@ -248,10 +248,11 @@ class DeckBuilderProvider extends ChangeNotifier {
     }
   }
 
-  // ── Custom art override ───────────────────────────────────────────────────
-  void setLocalImage(int index, String path) {
+  // ── Swap card printing ─────────────────────────────────────────────────────────
+  void swapPrinting(int index, Map<String, dynamic> newPrintingData) {
     if (index < 0 || index >= parsedDeck.length) return;
-    parsedDeck[index].localImagePath = path;
+    final qty = parsedDeck[index].quantity;
+    parsedDeck[index] = ProxyCard(scryfallData: newPrintingData, quantity: qty);
     notifyListeners();
   }
 

@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:file_picker/file_picker.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../engine/deck_doctor_engine.dart';
 import '../providers/deck_builder_provider.dart';
 import '../models/card_models.dart';
 import '../services/commander_cache_service.dart';
+import '../services/scryfall_repository.dart';
 import '../theme/dark_theme.dart';
 import '../widgets/card_hover_wrapper.dart';
 import '../widgets/export_modal.dart';
@@ -641,7 +642,6 @@ class _LegalCardRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.read<DeckBuilderProvider>();
-    final hasOverride = card.localImagePath != null;
     final imgUrl = _cardImageUrl(card.scryfallData);
     final maxAllowed = p.getMaxCopiesAllowed(card.scryfallData);
     final isOverLimit = card.quantity > maxAllowed;
@@ -655,28 +655,12 @@ class _LegalCardRow extends StatelessWidget {
             '${card.setCode.toUpperCase()} · CMC ${card.cmc} · \$${card.usdPrice}',
             style: const TextStyle(color: kTextMuted, fontSize: 10)),
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (hasOverride)
-            const Tooltip(
-              message: 'Custom art override set',
-              child: Icon(Icons.check_circle, size: 14, color: Colors.green),
-            ),
           IconButton(
-            icon: Icon(
-              hasOverride ? Icons.image : Icons.add_photo_alternate_outlined,
-              size: 16, color: kTextMuted,
-            ),
-            tooltip: 'Set custom art image',
+            icon: const Icon(Icons.auto_awesome_mosaic, size: 16, color: kTextMuted),
+            tooltip: 'Select printing',
             constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
             padding: EdgeInsets.zero,
-            onPressed: () async {
-              final result = await FilePicker.platform.pickFiles(
-                  type: FileType.image, allowMultiple: false);
-              if (!context.mounted) return;
-              if (result != null && result.files.single.path != null) {
-                context.read<DeckBuilderProvider>()
-                    .setLocalImage(index, result.files.single.path!);
-              }
-            },
+            onPressed: () => _showPrintingSelector(context, p, index, card),
           ),
           const SizedBox(width: 4),
           IconButton(
@@ -714,6 +698,21 @@ class _LegalCardRow extends StatelessWidget {
           ),
         ]),
       ),
+    );
+  }
+
+  void _showPrintingSelector(
+      BuildContext context, DeckBuilderProvider provider,
+      int cardIndex, ProxyCard card) {
+    final oracleId = card.scryfallData['oracle_id'] as String? ?? '';
+    showDialog(
+      context: context,
+      builder: (ctx) => _PrintingSelectorDialog(
+          oracleId: oracleId,
+          onSelected: (printing) {
+            provider.swapPrinting(cardIndex, printing);
+            Navigator.of(ctx).pop();
+          }),
     );
   }
 }
@@ -824,4 +823,128 @@ class _IllegalCardRow extends StatelessWidget {
     'Land'    => const Color(0xFF84CC16),
     _         => kTextMuted,
   };
+}
+
+// ── Printing Selector Dialog ────────────────────────────────────────────────
+
+class _PrintingSelectorDialog extends StatefulWidget {
+  final String oracleId;
+  final void Function(Map<String, dynamic>) onSelected;
+
+  const _PrintingSelectorDialog({
+    required this.oracleId,
+    required this.onSelected,
+  });
+
+  @override
+  State<_PrintingSelectorDialog> createState() =>
+      _PrintingSelectorDialogState();
+}
+
+class _PrintingSelectorDialogState extends State<_PrintingSelectorDialog> {
+  List<Map<String, dynamic>>? _printings;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetch();
+  }
+
+  Future<void> _fetch() async {
+    final results = await ScryfallRepository.fetchPrintings(widget.oracleId);
+    if (mounted) setState(() { _printings = results; _loading = false; });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: kBgPane,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: SizedBox(
+        width: 520,
+        height: 480,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                color: kBgCard,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+              ),
+              child: const Row(children: [
+                Icon(Icons.auto_awesome_mosaic, color: kAccentLight, size: 20),
+                SizedBox(width: 8),
+                Text('Select Printing',
+                    style: TextStyle(color: kText, fontSize: 14,
+                        fontWeight: FontWeight.bold)),
+              ]),
+            ),
+            const Divider(height: 1),
+
+            // Grid
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+                  : (_printings == null || _printings!.isEmpty)
+                      ? const Center(child: Text('No printings found.',
+                          style: TextStyle(color: kTextMuted)))
+                      : GridView.builder(
+                          padding: const EdgeInsets.all(12),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            childAspectRatio: 0.715,
+                            crossAxisSpacing: 8,
+                            mainAxisSpacing: 8,
+                          ),
+                          itemCount: _printings!.length,
+                          itemBuilder: (_, i) {
+                            final p = _printings![i];
+                            final setName = p['set_name'] as String? ?? '';
+                            final setCode = (p['set'] as String? ?? '').toUpperCase();
+                            final imgUrl = _cardImageUrl(p);
+
+                            return InkWell(
+                              onTap: () => widget.onSelected(p),
+                              borderRadius: BorderRadius.circular(8),
+                              child: Column(children: [
+                                Expanded(
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: CachedNetworkImage(
+                                      imageUrl: imgUrl,
+                                      fit: BoxFit.cover,
+                                      width: double.infinity,
+                                      placeholder: (_, __) => Container(
+                                          color: kBgCard,
+                                          child: const Center(child:
+                                              CircularProgressIndicator(
+                                                  strokeWidth: 2))),
+                                      errorWidget: (_, __, ___) => Container(
+                                          color: kBgCard,
+                                          child: const Icon(
+                                              Icons.image_not_supported,
+                                              color: kTextMuted)),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text('$setCode · $setName',
+                                    style: const TextStyle(
+                                        color: kTextMuted, fontSize: 8),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis),
+                              ]),
+                            );
+                          },
+                        ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

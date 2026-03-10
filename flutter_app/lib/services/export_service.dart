@@ -419,13 +419,8 @@ class ExportEngine {
 
       Uint8List? bytes;
 
-      // Custom art override
-      if (card.localImagePath != null) {
-        try { bytes = await File(card.localImagePath!).readAsBytes(); } catch (_) {}
-      }
-
       // MTGPics first (if preferred)
-      if (bytes == null && preferMtgPics) {
+      if (preferMtgPics) {
         bytes = await fetchMtgPicsImage(card.setCode, card.collectorNumber);
       }
 
