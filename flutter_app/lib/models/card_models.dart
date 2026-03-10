@@ -187,8 +187,31 @@ class ProxyCard {
   bool get isWipe => oracleText.toLowerCase().contains('destroy all') ||
       oracleText.toLowerCase().contains('exile all');
 
+  // ── Token / Extras detection ────────────────────────────────────────────
+  bool get isTokenOrEmblem {
+    final layout = (scryfallData['layout'] as String? ?? '').toLowerCase();
+    return const ['token', 'double_faced_token', 'emblem', 'art_series']
+        .contains(layout);
+  }
+
+  /// Whether a raw Scryfall card map represents a playable deckbuilding piece.
+  static bool isPlayableCard(Map<String, dynamic> card) {
+    final layout  = (card['layout']   as String? ?? '').toLowerCase();
+    final setType = (card['set_type'] as String? ?? '').toLowerCase();
+    const unplayable = [
+      'art_series', 'token', 'double_faced_token', 'emblem',
+      'planar', 'vanguard', 'scheme',
+    ];
+    if (unplayable.contains(layout)) return false;
+    if (setType == 'memorabilia') return false;
+    return true;
+  }
+
   /// Dynamic legality check against any Scryfall format key or platform.
   bool isLegalIn(String format) {
+    // Tokens/Emblems are always "legal to print"
+    if (isTokenOrEmblem) return true;
+
     final legalities =
         scryfallData['legalities'] as Map<String, dynamic>? ?? {};
     final games =

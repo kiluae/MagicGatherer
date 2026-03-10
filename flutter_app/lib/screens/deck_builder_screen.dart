@@ -309,6 +309,19 @@ class _BrowseTab extends StatelessWidget {
             onChanged: (v) => p.searchCardsForActiveFormat(v),
           ),
           const SizedBox(height: 8),
+          SwitchListTile(
+            title: const Text('Include Tokens & Extras',
+                style: TextStyle(color: kTextMuted, fontSize: 11)),
+            value: p.showExtras,
+            onChanged: (val) {
+              p.toggleExtras(val);
+              p.searchCardsForActiveFormat(ctrl.text);
+            },
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+          ),
+          const SizedBox(height: 8),
           if (p.browserResults.isNotEmpty)
             Text('${p.browserResults.length} results',
                 style: const TextStyle(color: kTextMuted, fontSize: 10)),
@@ -522,7 +535,6 @@ class _DiagnosisBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final total   = provider.parsedDeck.fold(0, (s, c) => s + c.quantity);
     final dropped = provider.droppedCards.length;
     final active  = provider.activeFilter;
 
@@ -533,7 +545,7 @@ class _DiagnosisBanner extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
-            _chip('Total',     '$total',                     kAccentLight,          active, provider),
+            _chip('Total',     '${provider.mainDeckCount}',  kAccentLight,          active, provider),
             _chip('Lands',     '${provider.landCount}',      const Color(0xFF84CC16), active, provider),
             _chip('Creatures', '${provider.creatureCount}',  const Color(0xFF22C55E), active, provider),
             _chip('Spells',    '${provider.spellCount}',     const Color(0xFF8B5CF6), active, provider),
@@ -541,6 +553,8 @@ class _DiagnosisBanner extends StatelessWidget {
             _chip('Draw',      '${provider.drawCount}',      const Color(0xFF3B82F6), active, provider),
             _chip('Removal',   '${provider.removalCount}',   const Color(0xFFF97316), active, provider),
             _chip('Wipe',      '${provider.wipeCount}',      const Color(0xFFEF4444), active, provider),
+            if (provider.tokenCount > 0)
+              _chip('Tokens',  '${provider.tokenCount}',     Colors.amber,          active, provider),
             if (dropped > 0)
               _chip('Dropped', '$dropped', const Color(0xFFEF4444), active, provider),
           ],
