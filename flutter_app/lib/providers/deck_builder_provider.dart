@@ -64,6 +64,66 @@ class DeckBuilderProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── Card Browser: format-aware search ─────────────────────────────────────
+
+  List<Map<String, dynamic>> browserResults = [];
+
+  /// Search [globalCardPool] for cards matching [query] that are legal in
+  /// [selectedFormat]. Returns up to 50 results.
+  void searchCardsForActiveFormat(String query) {
+    if (query.trim().length < 2) {
+      browserResults = [];
+      notifyListeners();
+      return;
+    }
+
+    final terms = query.toLowerCase().split(RegExp(r'\s+'));
+
+    browserResults = globalCardPool.where((card) {
+      final name = (card['name'] as String? ?? '').toLowerCase();
+      // All search terms must appear in the card name
+      if (!terms.every((t) => name.contains(t))) return false;
+
+      // Format legality check
+      final legalities = card['legalities'] as Map<String, dynamic>? ?? {};
+      final games = (card['games'] as List?)?.cast<String>() ?? [];
+
+      switch (selectedFormat) {
+        case 'paper':
+          return true;
+        case 'arena':
+          return games.contains('arena') ||
+              (legalities['timeless'] != null &&
+                  legalities['timeless'] != 'not_legal');
+        case 'mtgo':
+          return games.contains('mtgo') ||
+              card['mtgo_id'] != null ||
+              (legalities['vintage'] != null &&
+                  legalities['vintage'] != 'not_legal');
+        default:
+          final status = legalities[selectedFormat];
+          return status == 'legal' || status == 'restricted';
+      }
+    }).take(50).toList();
+
+    notifyListeners();
+  }
+
+  /// Add a card from the browser to the parsed deck.
+  /// If it already exists, increment quantity; otherwise append it.
+  void addCardToDeck(Map<String, dynamic> cardData) {
+    final name = (cardData['name'] as String? ?? '').toLowerCase();
+    final existing = parsedDeck.where(
+        (c) => c.name.toLowerCase() == name);
+
+    if (existing.isNotEmpty) {
+      existing.first.quantity += 1;
+    } else {
+      parsedDeck.add(ProxyCard(scryfallData: cardData, quantity: 1));
+    }
+    notifyListeners();
+  }
+
   // ── Generation state ──────────────────────────────────────────────────────
   bool    isGenerating = false;
   bool    isFetching   = false;

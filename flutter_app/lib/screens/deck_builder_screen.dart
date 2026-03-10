@@ -50,14 +50,16 @@ class _LeftPaneState extends State<_LeftPane>
   late final TabController _tabs;
   late final TextEditingController _pasteCtrl;
   late final TextEditingController _cmdCtrl;
+  late final TextEditingController _browseCtrl;
   List<String> _commanderNames = [];
 
   @override
   void initState() {
     super.initState();
-    _tabs      = TabController(length: 2, vsync: this);
-    _pasteCtrl = TextEditingController();
-    _cmdCtrl   = TextEditingController();
+    _tabs       = TabController(length: 3, vsync: this);
+    _pasteCtrl  = TextEditingController();
+    _cmdCtrl    = TextEditingController();
+    _browseCtrl = TextEditingController();
     CommanderCacheService().getCommanders(onStatus: (_) {}).then((cmds) {
       if (mounted) setState(() => _commanderNames = cmds.map((c) => c.name).toList());
     });
@@ -68,6 +70,7 @@ class _LeftPaneState extends State<_LeftPane>
     _tabs.dispose();
     _pasteCtrl.dispose();
     _cmdCtrl.dispose();
+    _browseCtrl.dispose();
     super.dispose();
   }
 
@@ -89,7 +92,7 @@ class _LeftPaneState extends State<_LeftPane>
                     style: TextStyle(
                         color: kText, fontSize: 16, fontWeight: FontWeight.bold)),
                 SizedBox(height: 2),
-                Text('Load a deck, parse it, then hit Gather Your Magic.',
+                Text('Load a deck, browse cards, then hit Gather Your Magic.',
                     style: TextStyle(color: kTextMuted, fontSize: 11)),
                 SizedBox(height: 12),
               ],
@@ -103,10 +106,11 @@ class _LeftPaneState extends State<_LeftPane>
               unselectedLabelColor: kTextMuted,
               indicatorColor: kAccentLight,
               indicatorWeight: 2,
-              labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              labelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
               tabs: const [
-                Tab(icon: Icon(Icons.person_search, size: 16), text: 'Commander Lookup'),
-                Tab(icon: Icon(Icons.content_paste, size: 16), text: 'Pasted List'),
+                Tab(icon: Icon(Icons.person_search, size: 14), text: 'Commander'),
+                Tab(icon: Icon(Icons.content_paste, size: 14), text: 'Import'),
+                Tab(icon: Icon(Icons.search, size: 14), text: 'Browse'),
               ],
             ),
           ),
@@ -116,6 +120,7 @@ class _LeftPaneState extends State<_LeftPane>
               children: [
                 _CommanderTab(ctrl: _cmdCtrl, commanderNames: _commanderNames),
                 _PasteTab(ctrl: _pasteCtrl),
+                _BrowseTab(ctrl: _browseCtrl),
               ],
             ),
           ),
@@ -241,6 +246,120 @@ class _PasteTab extends StatelessWidget {
       ),
     );
   }
+}
+
+// ── Tab C: Card Browser ─────────────────────────────────────────────────────
+
+class _BrowseTab extends StatelessWidget {
+  final TextEditingController ctrl;
+  const _BrowseTab({required this.ctrl});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.watch<DeckBuilderProvider>();
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Search cards legal in ${_formatLabel(p.selectedFormat)}',
+            style: const TextStyle(color: kTextMuted, fontSize: 11),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: ctrl,
+            style: const TextStyle(color: kText, fontSize: 12),
+            decoration: InputDecoration(
+              hintText: 'Search by name...',
+              hintStyle: const TextStyle(color: kTextMuted, fontSize: 12),
+              prefixIcon: const Icon(Icons.search, size: 18, color: kTextMuted),
+              suffixIcon: ctrl.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear, size: 16, color: kTextMuted),
+                      onPressed: () {
+                        ctrl.clear();
+                        p.searchCardsForActiveFormat('');
+                      },
+                    )
+                  : null,
+              contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+              border: const OutlineInputBorder(borderSide: BorderSide(color: kBorder)),
+              enabledBorder: const OutlineInputBorder(borderSide: BorderSide(color: kBorder)),
+              focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: kAccentLight)),
+              filled: true,
+              fillColor: kBgCard,
+            ),
+            onChanged: (v) => p.searchCardsForActiveFormat(v),
+          ),
+          const SizedBox(height: 8),
+          if (p.browserResults.isNotEmpty)
+            Text('${p.browserResults.length} results',
+                style: const TextStyle(color: kTextMuted, fontSize: 10)),
+          const SizedBox(height: 4),
+          Expanded(
+            child: p.browserResults.isEmpty
+                ? Center(
+                    child: Text(
+                      ctrl.text.length < 2
+                          ? 'Type at least 2 characters to search'
+                          : 'No cards found',
+                      style: const TextStyle(color: kTextMuted, fontSize: 12),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: p.browserResults.length,
+                    itemBuilder: (_, i) {
+                      final card = p.browserResults[i];
+                      final name = card['name'] as String? ?? '';
+                      final type = card['type_line'] as String? ?? '';
+                      final cmc  = card['cmc'] as num? ?? 0;
+
+                      return ListTile(
+                        dense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 0),
+                        title: Text(name,
+                            style: const TextStyle(color: kText, fontSize: 11)),
+                        subtitle: Text('$type · CMC $cmc',
+                            style: const TextStyle(color: kTextMuted, fontSize: 9)),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.add_circle_outline,
+                              size: 18, color: kAccentLight),
+                          tooltip: 'Add to deck',
+                          onPressed: () {
+                            p.addCardToDeck(card);
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                              content: Text('Added $name to deck',
+                                  style: const TextStyle(fontSize: 12)),
+                              backgroundColor: Colors.green.shade700,
+                              duration: const Duration(seconds: 1),
+                            ));
+                          },
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatLabel(String f) => switch (f) {
+    'arena'     => 'Arena',
+    'mtgo'      => 'MTGO',
+    'paper'     => 'Paper',
+    'commander' => 'Commander',
+    'standard'  => 'Standard',
+    'pioneer'   => 'Pioneer',
+    'modern'    => 'Modern',
+    'historic'  => 'Historic',
+    'brawl'     => 'Brawl',
+    'pauper'    => 'Pauper',
+    _           => f,
+  };
 }
 
 // ── Right Pane: Analytical Dashboard ────────────────────────────────────────
