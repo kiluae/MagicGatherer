@@ -69,7 +69,7 @@ class _GatherScreenState extends State<GatherScreen> {
   List<String> _errLog   = [];
   String? _loadedFilePath;
 
-  // Pre-loaded cards (from Commander Roller / Deck Doctor)
+  // Pre-loaded cards (from Commander Roller / Format Surgeon)
   List<ScryfallCard> _preloadedCards = [];
 
   /// True when the current input tab actually has something to process.
@@ -516,7 +516,7 @@ class _GatherScreenState extends State<GatherScreen> {
         'MTGO .dek, or Arena clipboard string.\n\n'
         '4. Hit "Gather your Magic" and select an output folder.\n\n'
         'Use Commander Roller to find a commander, '
-        'and Deck Doctor for deck improvement recommendations.',
+        'and Format Surgeon for deck improvement recommendations.',
         style: TextStyle(fontSize: 13, height: 1.6),
       ),
       actions: [

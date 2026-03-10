@@ -1,15 +1,20 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../engine/deck_doctor_engine.dart';
 import '../models/card_models.dart';
-import '../services/edhrec_service.dart';
-import '../services/scryfall_service.dart';
+import '../providers/deck_builder_provider.dart';
+import '../services/commander_cache_service.dart';
+import '../services/export_service.dart';
+import '../services/scryfall_repository.dart';
 import '../theme/dark_theme.dart';
 import '../widgets/card_preview_overlay.dart';
-import '../widgets/analytics_dashboard.dart';
+import '../widgets/fuzzy_search_field.dart';
 
 class DeckDoctorScreen extends StatefulWidget {
   final String initialCommander;
-  final void Function(List<Map<String, dynamic>> cards, String commanderName)? onSendToGather;
+  final void Function(List<Map<String, dynamic>> cards, String commanderName)?
+      onSendToGather;
 
   const DeckDoctorScreen({
     super.key,
@@ -22,23 +27,19 @@ class DeckDoctorScreen extends StatefulWidget {
 }
 
 class _DeckDoctorScreenState extends State<DeckDoctorScreen> {
-  final _pasteCtrl      = TextEditingController();
-  final _commanderCtrl  = TextEditingController();
-  final _edhrec         = EdhrecService();
-  final _scryfall       = ScryfallService();
+  final _commanderCtrl = TextEditingController();
+  final _pasteCtrl     = TextEditingController();
 
-  String _format = 'paper';
+  String _format = 'arena';
+  List<String> _commanderNames = [];
 
-  // Analyzed deck
-  List<ScryfallCard> _deckCards  = [];
-  String _detectedCommander = '';
+  // ── Analysis State ──────────────────────────────────────────────────────
+  List<ProxyCard> _activeDeck    = [];
+  List<ProxyCard> _droppedCards  = [];
+  DeckDiagnosis?  _diagnosis;
+  Map<String, List<Map<String, dynamic>>> _suggestions = {};
 
-  // Recommendations
-  List<EdhrecCard> _adds = [];
-  List<ScryfallCard> _cuts = [];
-
-  bool _analyzing   = false;
-  bool _comparing   = false;
+  bool _analyzing = false;
   String? _statusMsg;
   String? _errorMsg;
 
@@ -52,116 +53,137 @@ class _DeckDoctorScreenState extends State<DeckDoctorScreen> {
     if (widget.initialCommander.isNotEmpty) {
       _commanderCtrl.text = widget.initialCommander;
     }
+    CommanderCacheService().getCommanders(onStatus: (_) {}).then((cmds) {
+      if (mounted) {
+        setState(
+            () => _commanderNames = cmds.map((c) => c.name).toList());
+      }
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Auto-import from DeckBuilderProvider if available
+    try {
+      final provider = context.read<DeckBuilderProvider>();
+      if (provider.parsedDeck.isNotEmpty && _activeDeck.isEmpty) {
+        _activeDeck = List.of(provider.parsedDeck);
+        _runDiagnosis();
+      }
+    } catch (_) {
+      // DeckBuilderProvider not in tree — that's fine
+    }
   }
 
   @override
   void dispose() {
-    _pasteCtrl.dispose();
     _commanderCtrl.dispose();
+    _pasteCtrl.dispose();
     super.dispose();
   }
 
-  // ── Deck Analysis ──────────────────────────────────────────────────────────
+  // ── Analysis Logic ────────────────────────────────────────────────────────
 
-  Future<void> _analyzeAndCompare() async {
+  void _runDiagnosis() {
+    if (_activeDeck.isEmpty) return;
+
+    // Identify cards that are NOT legal in the selected format
+    final kept    = <ProxyCard>[];
+    final dropped = <ProxyCard>[];
+
+    for (final card in _activeDeck) {
+      final legalities =
+          card.scryfallData['legalities'] as Map<String, dynamic>?;
+      final games =
+          (card.scryfallData['games'] as List?)?.cast<String>() ?? [];
+
+      bool isLegal;
+      if (_format == 'arena') {
+        isLegal = games.contains('arena') ||
+            (legalities != null &&
+                legalities['timeless'] != null &&
+                legalities['timeless'] != 'not_legal');
+      } else if (_format == 'mtgo') {
+        isLegal = games.contains('mtgo') ||
+            card.scryfallData['mtgo_id'] != null ||
+            (legalities != null &&
+                legalities['vintage'] != null &&
+                legalities['vintage'] != 'not_legal');
+      } else {
+        isLegal = true; // Paper — everything is legal
+      }
+
+      if (isLegal) {
+        kept.add(card);
+      } else {
+        dropped.add(card);
+      }
+    }
+
+    final diagnosis = DeckDoctorEngine.diagnose(kept);
+    final suggestions = dropped.isNotEmpty
+        ? DeckDoctorEngine.getSuggestions(dropped, formatFilter: _format)
+        : <String, List<Map<String, dynamic>>>{};
+
+    setState(() {
+      _droppedCards = dropped;
+      _diagnosis   = diagnosis;
+      _suggestions = suggestions;
+      _statusMsg   = '${kept.length} legal, ${dropped.length} dropped';
+    });
+  }
+
+  Future<void> _analyzeFromPaste() async {
     final raw = _pasteCtrl.text.trim();
-    final commanderInput = _commanderCtrl.text.trim();
-    if (raw.isEmpty && commanderInput.isEmpty) {
-      setState(() => _errorMsg = 'Paste a decklist and/or enter a commander.');
+    if (raw.isEmpty) {
+      setState(() => _errorMsg = 'Paste a decklist first.');
       return;
     }
 
     setState(() {
-      _analyzing = true; _comparing = false;
-      _adds = []; _cuts = []; _deckCards = [];
-      _statusMsg = 'Parsing decklist...'; _errorMsg = null;
+      _analyzing = true;
+      _errorMsg = null;
+      _statusMsg = 'Parsing decklist...';
     });
 
     try {
-      // 1. Parse the paste area for card names
-      final lines = raw.split('\n')
-          .where((l) => l.trim().isNotEmpty)
-          .map((l) => _stripQty(l.trim()))
-          .toList();
+      final result = DeckParser.parseTxt(raw, globalCardPool);
+      _activeDeck = result.deck;
 
-      if (lines.isNotEmpty) {
-        setState(() => _statusMsg = 'Fetching card data from Scryfall...');
-        _deckCards = await _scryfall.getCollection(
-            lines, formatFilter: _format);
-        _detectedCommander = commanderInput.isNotEmpty
-            ? commanderInput
-            : _detectCommander(_deckCards);
-        setState(() => _statusMsg = 'Deck loaded — ${_deckCards.length} cards.');
-      } else {
-        _detectedCommander = commanderInput;
+      if (_activeDeck.isEmpty) {
+        setState(() {
+          _statusMsg = 'No cards matched — is the local database loaded?';
+          _analyzing = false;
+        });
+        return;
       }
 
-      // 2. EDHREC comparison
-      if (_detectedCommander.isNotEmpty) {
-        setState(() { _comparing = true; _statusMsg = 'Fetching EDHREC recommendations for $_detectedCommander...'; });
-        final page = await _edhrec.getCommanderPage(_detectedCommander);
-        if (page == null) throw Exception('Commander not found on EDHREC.');
-
-        final allRecs  = page.toEdhrecCards();
-        final deckNames = _deckCards.map((c) => c.name.toLowerCase()).toSet();
-
-        // Adds: EDHREC suggests those NOT already in deck
-        _adds = allRecs.where((r) => !deckNames.contains(r.name.toLowerCase())).toList();
-
-        // Cuts: cards in deck that are NOT in any EDHREC cardview
-        final edhrecNames = allRecs.map((r) => r.name.toLowerCase()).toSet();
-        _cuts = _deckCards.where((c) => !edhrecNames.contains(c.name.toLowerCase())).toList();
-
-        setState(() { _statusMsg = '${_adds.length} suggestions, ${_cuts.length} potential cuts.'; });
-      } else {
-        setState(() => _statusMsg = 'No commander detected — paste a decklist with a named commander.');
-      }
+      _runDiagnosis();
     } catch (e) {
       setState(() => _errorMsg = 'Error: $e');
     } finally {
-      setState(() { _analyzing = false; _comparing = false; });
+      setState(() => _analyzing = false);
     }
   }
 
-  String _stripQty(String line) {
-    final m = RegExp(r'^\d+[x]?\s+(.*)$').firstMatch(line);
-    return m != null ? m.group(1)! : line;
-  }
+  void _swapSuggestion(String droppedName, Map<String, dynamic> replacement) {
+    setState(() {
+      _droppedCards.removeWhere(
+          (c) => c.name.toLowerCase() == droppedName.toLowerCase());
+      _activeDeck.add(ProxyCard(scryfallData: replacement, quantity: 1));
+      _suggestions.remove(droppedName);
+      _diagnosis = DeckDoctorEngine.diagnose(_activeDeck);
+    });
 
-  String _detectCommander(List<ScryfallCard> cards) {
-    // Heuristic: legendary creature, typically first line
-    for (final c in cards) {
-      if (c.typeLine.contains('Legendary') &&
-          (c.typeLine.contains('Creature') || c.typeLine.contains('Planeswalker'))) {
-        return c.name;
-      }
-    }
-    return '';
-  }
-
-  // ── Gap Filler ─────────────────────────────────────────────────────────────
-
-  /// Triggered when user double-clicks a recommendation card.
-  /// Sends that card name to the Gather screen EDHREC field.
-  void _onRecommendationDoubleTap(EdhrecCard card) {
-    if (widget.onSendToGather != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gap filler: searching "${card.name}" in Gather...'))
-      );
-      // We send as a query to gather — the gather screen handles EDHREC lookup
-      widget.onSendToGather!([], card.name);
-    }
-  }
-
-  /// Send the full updated decklist to the exporter
-  Future<void> _sendToExporter() async {
-    if (_deckCards.isEmpty) return;
-    widget.onSendToGather!(
-      _deckCards.map((c) => c.toJson()).toList(),
-      _detectedCommander,
-    );
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Decklist sent to Gather!')));
+      SnackBar(
+        content: Text(
+            'Swapped in ${replacement['name'] ?? 'card'} for $droppedName'),
+        backgroundColor: Colors.green.shade700,
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   // ── UI ─────────────────────────────────────────────────────────────────────
@@ -177,116 +199,14 @@ class _DeckDoctorScreenState extends State<DeckDoctorScreen> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Left: input + analytics
+                  // Left: Input panel
                   SizedBox(
                     width: 320,
-                    child: Container(
-                      color: kBgPane,
-                      child: Column(
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.all(14),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                _label('Commander'),
-                                const SizedBox(height: 6),
-                                TextField(
-                                  controller: _commanderCtrl,
-                                  decoration: const InputDecoration(
-                                    hintText: 'e.g. Atraxa, Praetors\' Voice',
-                                    prefixIcon: Icon(Icons.person_search),
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                _label('Format'),
-                                _formatRow(),
-                                const SizedBox(height: 12),
-                                _label('Decklist'),
-                                const SizedBox(height: 6),
-                                TextField(
-                                  controller: _pasteCtrl,
-                                  maxLines: 10,
-                                  style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: kText),
-                                  decoration: const InputDecoration(
-                                    hintText: '1 Sol Ring\n1 Command Tower\n...',
-                                    contentPadding: EdgeInsets.all(10),
-                                  ),
-                                ),
-                                const SizedBox(height: 14),
-                                Tooltip(
-                                  message: 'Compare your deck against EDHREC average and get upgrade suggestions',
-                                  child: ElevatedButton.icon(
-                                    icon: _analyzing || _comparing
-                                        ? const SizedBox(width: 16, height: 16,
-                                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                        : const Icon(Icons.compare, size: 16),
-                                    label: Text(_analyzing || _comparing ? 'Analyzing...' : 'Analyze & Compare'),
-                                    onPressed: _analyzing || _comparing ? null : _analyzeAndCompare,
-                                    style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
-                                  ),
-                                ),
-                                if (_deckCards.isNotEmpty) ...[
-                                  const SizedBox(height: 8),
-                                  Tooltip(
-                                    message: 'Open the Proxy Builder with this deck pre-loaded',
-                                    child: OutlinedButton.icon(
-                                      icon: const Icon(Icons.print, size: 15),
-                                      label: const Text('Send to Exporter'),
-                                      onPressed: _sendToExporter,
-                                    ),
-                                  ),
-                                ],
-                                if (_statusMsg != null) ...[
-                                  const SizedBox(height: 10),
-                                  Text(_statusMsg!, style: const TextStyle(color: kSuccess, fontSize: 12)),
-                                ],
-                                if (_errorMsg != null) ...[
-                                  const SizedBox(height: 6),
-                                  Text(_errorMsg!, style: const TextStyle(color: kError, fontSize: 12)),
-                                ],
-                              ],
-                            ),
-                          ),
-                          // Analytics dashboard (mana curve + type breakdown)
-                          if (_deckCards.isNotEmpty)
-                            Expanded(
-                              child: AnalyticsDashboard(cards: _deckCards),
-                            ),
-                        ],
-                      ),
-                    ),
+                    child: _inputPanel(),
                   ),
-                  // Center: Recommendations (Add)
-                  Expanded(
-                    child: _recommendationColumn(
-                      title: 'EDHREC Suggestions (${_adds.length})',
-                      icon: Icons.add_circle_outline,
-                      color: kSuccess,
-                      child: _adds.isEmpty
-                          ? _emptyHint('Run Analyze & Compare to see suggestions')
-                          : ListView.builder(
-                              padding: const EdgeInsets.all(8),
-                              itemCount: _adds.length,
-                              itemBuilder: (_, i) => _addCard(_adds[i]),
-                            ),
-                    ),
-                  ),
-                  // Right: Cuts
-                  Expanded(
-                    child: _recommendationColumn(
-                      title: 'Potential Cuts (${_cuts.length})',
-                      icon: Icons.remove_circle_outline,
-                      color: kError,
-                      child: _cuts.isEmpty
-                          ? _emptyHint('Cards not found on EDHREC will appear here')
-                          : ListView.builder(
-                              padding: const EdgeInsets.all(8),
-                              itemCount: _cuts.length,
-                              itemBuilder: (_, i) => _cutCard(_cuts[i]),
-                            ),
-                    ),
-                  ),
+                  const VerticalDivider(width: 1),
+                  // Right: Diagnosis + Prescription
+                  Expanded(child: _resultsPanel()),
                 ],
               ),
             ),
@@ -299,147 +219,313 @@ class _DeckDoctorScreenState extends State<DeckDoctorScreen> {
   }
 
   Widget _toolbar() => Container(
-    color: kBgPane,
-    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-    child: Row(
-      children: [
-        const Icon(Icons.medical_services, color: kAccentLight),
-        const SizedBox(width: 10),
-        Text('Deck Doctor',
-            style: Theme.of(context).textTheme.titleMedium
-                ?.copyWith(fontWeight: FontWeight.bold)),
-        if (_detectedCommander.isNotEmpty) ...[
-          const SizedBox(width: 16),
-          Chip(
-            label: Text(_detectedCommander, style: const TextStyle(fontSize: 12)),
-            backgroundColor: kAccent.withValues(alpha: 0.2),
-            avatar: const Icon(Icons.person, size: 14, color: kAccentLight),
-          ),
-        ],
-      ],
-    ),
-  );
-
-  Widget _formatRow() => Row(
-    children: ['paper', 'arena', 'mtgo'].map((f) => Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: ChoiceChip(
-        label: Text(f.capitalize(), style: const TextStyle(fontSize: 11)),
-        selected: _format == f,
-        onSelected: (_) => setState(() => _format = f),
-        selectedColor: kAccent,
-        backgroundColor: kBgCard,
-        labelStyle: TextStyle(color: _format == f ? Colors.white : kTextMuted),
-        visualDensity: VisualDensity.compact,
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-      ),
-    )).toList(),
-  );
-
-  Widget _recommendationColumn({
-    required String title,
-    required IconData icon,
-    required Color color,
-    required Widget child,
-  }) =>
-    Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.08),
-            border: const Border(bottom: BorderSide(color: kBorder)),
-          ),
-          child: Row(
-            children: [
-              Icon(icon, color: color, size: 16),
-              const SizedBox(width: 6),
-              Text(title, style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 13)),
-            ],
-          ),
-        ),
-        Expanded(child: child),
-      ],
-    );
-
-  Widget _addCard(EdhrecCard card) {
-    return MouseRegion(
-      onHover: (e) {
-        if (card.imageUri != null) {
-          setState(() { _hoverImage = card.imageUri; _hoverPos = e.position; });
-        }
-      },
-      onExit: (_) => setState(() => _hoverImage = null),
-      child: GestureDetector(
-        onDoubleTap: () => _onRecommendationDoubleTap(card),
-        child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
-          decoration: BoxDecoration(
-            color: kBgCard,
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: kBorder),
-          ),
-          child: Row(
-            children: [
-              // Symbol badge
-              Container(
-                width: 28, height: 22,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: kAccent.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text('[${card.symbol}]',
-                    style: const TextStyle(color: kAccentLight, fontSize: 10, fontWeight: FontWeight.bold)),
-              ),
-              const SizedBox(width: 8),
-              Expanded(child: Text(card.name, style: const TextStyle(color: kText, fontSize: 12))),
-              const Icon(Icons.double_arrow, size: 12, color: kTextMuted),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _cutCard(ScryfallCard card) {
-    return MouseRegion(
-      onHover: (e) {
-        final url = card.bestImageUri;
-        if (url.isNotEmpty) setState(() { _hoverImage = url; _hoverPos = e.position; });
-      },
-      onExit: (_) => setState(() => _hoverImage = null),
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
-        decoration: BoxDecoration(
-          color: kBgCard,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: kBorder),
-        ),
+        color: kBgPane,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         child: Row(
           children: [
-            const Icon(Icons.remove_circle_outline, size: 14, color: kError),
-            const SizedBox(width: 6),
-            Expanded(child: Text(card.name, style: const TextStyle(color: kText, fontSize: 12))),
+            const Icon(Icons.medical_services, color: kAccentLight),
+            const SizedBox(width: 10),
+            Text('Format Surgeon',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold)),
+            const Spacer(),
+            // Format chips
+            ..._formatChips(),
           ],
         ),
+      );
+
+  List<Widget> _formatChips() =>
+      ['arena', 'mtgo', 'paper'].map((f) {
+        return Padding(
+          padding: const EdgeInsets.only(left: 6),
+          child: ChoiceChip(
+            label: Text(f[0].toUpperCase() + f.substring(1),
+                style: const TextStyle(fontSize: 11)),
+            selected: _format == f,
+            onSelected: (_) {
+              setState(() => _format = f);
+              if (_activeDeck.isNotEmpty) _runDiagnosis();
+            },
+            selectedColor: kAccent,
+            backgroundColor: kBgCard,
+            labelStyle:
+                TextStyle(color: _format == f ? Colors.white : kTextMuted),
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+          ),
+        );
+      }).toList();
+
+  // ── Left Panel: Input ──────────────────────────────────────────────────────
+
+  Widget _inputPanel() => Container(
+        color: kBgPane,
+        child: ListView(
+          padding: const EdgeInsets.all(14),
+          children: [
+            _label('Commander (optional)'),
+            const SizedBox(height: 6),
+            FuzzySearchField(
+              controller: _commanderCtrl,
+              candidates: _commanderNames,
+              hintText: "Atraxa, Praetors' Voice",
+              onSelected: (_) {},
+            ),
+            const SizedBox(height: 14),
+            _label('Paste Decklist'),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _pasteCtrl,
+              maxLines: 12,
+              style: const TextStyle(
+                  fontFamily: 'monospace', fontSize: 11, color: kText),
+              decoration: const InputDecoration(
+                hintText: '1 Sol Ring\n1 Command Tower\n...',
+                contentPadding: EdgeInsets.all(10),
+              ),
+            ),
+            const SizedBox(height: 14),
+            ElevatedButton.icon(
+              icon: _analyzing
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.auto_fix_high, size: 16),
+              label: Text(_analyzing ? 'Analyzing...' : 'Analyze Deck'),
+              onPressed: _analyzing ? null : _analyzeFromPaste,
+              style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14)),
+            ),
+            if (_statusMsg != null) ...[
+              const SizedBox(height: 10),
+              Text(_statusMsg!,
+                  style: const TextStyle(color: kSuccess, fontSize: 12)),
+            ],
+            if (_errorMsg != null) ...[
+              const SizedBox(height: 6),
+              Text(_errorMsg!,
+                  style: const TextStyle(color: kError, fontSize: 12)),
+            ],
+          ],
+        ),
+      );
+
+  // ── Right Panel: Diagnosis + Prescription ─────────────────────────────────
+
+  Widget _resultsPanel() {
+    if (_diagnosis == null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.medical_services_outlined,
+                size: 48, color: kTextMuted.withValues(alpha: 0.4)),
+            const SizedBox(height: 12),
+            const Text('Paste a decklist and hit Analyze,',
+                style: TextStyle(color: kTextMuted, fontSize: 14)),
+            const Text('or load one in the Proxy Builder tab first.',
+                style: TextStyle(color: kTextMuted, fontSize: 11)),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        // ── Diagnosis Dashboard ───────────────────────────────────────────
+        _diagnosisDashboard(),
+        const Divider(height: 1),
+        // ── Prescription: Dropped cards + suggestions ─────────────────────
+        Expanded(child: _prescriptionPanel()),
+      ],
+    );
+  }
+
+  Widget _diagnosisDashboard() {
+    final d = _diagnosis!;
+    return Container(
+      color: kBgPane,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      child: Row(
+        children: [
+          _statChip('Total', '${d.totalCards}/100', kAccentLight),
+          _statChip('Dropped', '${_droppedCards.length}', kError),
+          _statChip('Ramp', '${d.rampCount}', const Color(0xFF22C55E)),
+          _statChip('Draw', '${d.drawCount}', const Color(0xFF3B82F6)),
+          _statChip('Removal', '${d.removalCount}', const Color(0xFFF97316)),
+          _statChip('Lands', '${d.landCount}', const Color(0xFF84CC16)),
+        ],
       ),
     );
   }
 
+  Widget _statChip(String label, String value, Color color) => Expanded(
+        child: Column(
+          children: [
+            Text(value,
+                style: TextStyle(
+                    color: color, fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 2),
+            Text(label,
+                style: const TextStyle(color: kTextMuted, fontSize: 10)),
+          ],
+        ),
+      );
+
+  Widget _prescriptionPanel() {
+    if (_droppedCards.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.check_circle_outline,
+                size: 48, color: Color(0xFF22C55E)),
+            const SizedBox(height: 12),
+            Text(
+              _format == 'paper'
+                  ? 'All cards are legal in Paper!'
+                  : 'All cards are legal in ${_format == 'arena' ? 'MTG Arena' : 'MTGO'}!',
+              style: const TextStyle(color: kText, fontSize: 14),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(12),
+      itemCount: _droppedCards.length,
+      itemBuilder: (_, i) => _droppedCardRow(_droppedCards[i]),
+    );
+  }
+
+  Widget _droppedCardRow(ProxyCard card) {
+    final suggestions = _suggestions[card.name] ?? [];
+    final oracle = card.scryfallData['oracle_text'] as String? ?? '';
+    final typeLine = card.scryfallData['type_line'] as String? ?? '';
+    final roles = DeckDoctorEngine.getRoles(oracle, typeLine);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: kBgCard,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: kBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Dropped card header
+          Row(
+            children: [
+              const Icon(Icons.remove_circle, size: 16, color: kError),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(card.name,
+                    style: const TextStyle(
+                        color: kText,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600)),
+              ),
+              // Role tags
+              ...roles.map((r) => Container(
+                    margin: const EdgeInsets.only(left: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: _roleColor(r).withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(r,
+                        style: TextStyle(
+                            color: _roleColor(r),
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold)),
+                  )),
+            ],
+          ),
+
+          // Suggestion row
+          if (suggestions.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            const Text('Suggested replacements:',
+                style: TextStyle(color: kTextMuted, fontSize: 10)),
+            const SizedBox(height: 6),
+            SizedBox(
+              height: 40,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: suggestions.length,
+                itemBuilder: (_, si) {
+                  final s = suggestions[si];
+                  final sName = s['name'] as String? ?? '';
+                  return MouseRegion(
+                    onHover: (e) {
+                      final imgUris =
+                          s['image_uris'] as Map<String, dynamic>?;
+                      final url = imgUris?['normal'] as String?;
+                      if (url != null) {
+                        setState(() {
+                          _hoverImage = url;
+                          _hoverPos = e.position;
+                        });
+                      }
+                    },
+                    onExit: (_) => setState(() => _hoverImage = null),
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: kAccent.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6),
+                        border:
+                            Border.all(color: kAccent.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(sName,
+                              style: const TextStyle(
+                                  color: kText, fontSize: 11)),
+                          const SizedBox(width: 6),
+                          InkWell(
+                            onTap: () => _swapSuggestion(card.name, s),
+                            child: const Icon(Icons.add_circle,
+                                size: 16, color: kAccentLight),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ] else ...[
+            const SizedBox(height: 6),
+            const Text('No replacements found in local database.',
+                style: TextStyle(color: kTextMuted, fontSize: 10)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Color _roleColor(String role) => switch (role) {
+        'Ramp'    => const Color(0xFF22C55E),
+        'Draw'    => const Color(0xFF3B82F6),
+        'Removal' => const Color(0xFFF97316),
+        'Land'    => const Color(0xFF84CC16),
+        _         => kTextMuted,
+      };
+
   Widget _label(String text) => Text(text,
-      style: const TextStyle(color: kTextMuted, fontSize: 12, fontWeight: FontWeight.w600));
-
-  Widget _emptyHint(String msg) => Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Text(msg, style: const TextStyle(color: kTextMuted, fontSize: 13),
-            textAlign: TextAlign.center),
-      ));
-}
-
-extension _StringCap on String {
-  String capitalize() => isEmpty ? this : '${this[0].toUpperCase()}${substring(1)}';
+      style: const TextStyle(
+          color: kTextMuted, fontSize: 12, fontWeight: FontWeight.w600));
 }

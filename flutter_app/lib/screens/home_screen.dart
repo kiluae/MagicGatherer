@@ -32,7 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _sendToDoctor(String commanderName) {
     setState(() {
       _pendingCommanderName = commanderName;
-      _selectedIndex        = 2; // Switch to Deck Doctor tab
+      _selectedIndex        = 2; // Switch to Format Surgeon tab
     });
   }
 
@@ -50,7 +50,7 @@ class _HomeScreenState extends State<HomeScreen> {
     const _NavDestination(Icons.casino_outlined, Icons.casino,
         'Commander', 'Commander Roller'),
     const _NavDestination(Icons.medical_services_outlined, Icons.medical_services,
-        'Deck Doctor', 'Deck Doctor'),
+        'Format Surgeon', 'Format Surgeon'),
     const _NavDestination(Icons.search_outlined, Icons.search,
         'Search', 'Card Search'),
     const _NavDestination(Icons.picture_as_pdf_outlined, Icons.picture_as_pdf,
