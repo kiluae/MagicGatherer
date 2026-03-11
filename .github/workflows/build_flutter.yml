@@ -63,9 +63,9 @@ jobs:
       - name: Create DMG (macOS)
         if: matrix.name == 'macOS'
         run: |
-          APP_NAME=$(ls flutter_app/build/macos/Build/Products/Release/*.app | head -1)
           cd flutter_app/build/macos/Build/Products/Release
-          hdiutil create -volname "MagicGatherer" -srcfolder "$(basename "$APP_NAME")" -ov -format UDZO ../../../../../../MagicGatherer-macOS.dmg
+          APP_NAME="$(ls *.app | head -n 1)"
+          hdiutil create -volname "MagicGatherer" -srcfolder "$APP_NAME" -ov -format UDZO ../../../../../../MagicGatherer-macOS.dmg
 
       - name: Upload to Release
         if: startsWith(github.ref, 'refs/tags/')
