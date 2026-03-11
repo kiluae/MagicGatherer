@@ -2,7 +2,7 @@ name: Flutter Build and Release
 on:
   push:
     branches:
-      - testing_v1
+      - main
     tags:
       - 'v*'
 
@@ -10,8 +10,8 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build for ${{ matrix.name }}
+  build-desktop:
+    name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -63,13 +63,56 @@ jobs:
       - name: Create DMG (macOS)
         if: matrix.name == 'macOS'
         run: |
+          APP_NAME=$(ls flutter_app/build/macos/Build/Products/Release/*.app | head -1)
           cd flutter_app/build/macos/Build/Products/Release
-          hdiutil create -volname "MagicGatherer2 Beta" -srcfolder "MagicGatherer2 Beta.app" -ov -format UDZO ../../../../../../MagicGatherer-macOS.dmg
+          hdiutil create -volname "MagicGatherer" -srcfolder "$(basename "$APP_NAME")" -ov -format UDZO ../../../../../../MagicGatherer-macOS.dmg
 
       - name: Upload to Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
           files: ${{ matrix.artifact }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.x'
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        working-directory: flutter_app
+        run: flutter pub get
+
+      - name: Build APK (release)
+        working-directory: flutter_app
+        run: flutter build apk --release
+
+      - name: Rename APK
+        run: |
+          cp flutter_app/build/app/outputs/flutter-apk/app-release.apk \
+             MagicGatherer-Android.apk
+
+      - name: Upload to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: MagicGatherer-Android.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
